@@ -1,0 +1,113 @@
+{
+  "id": "com.stremio.kickaddon",
+  "version": "1.0.0",
+  "name": "Kick.com Add-on",
+  "description": "Add-on oficial para Kick.com no Stremio - Streams ao vivo, VODs e canais",
+  "logo": "https://avatars.githubusercontent.com/u/88046656?s=200&v=4",
+  "background": "https://www.kick.com/og-image.jpg",
+  "types": [
+    "channel",
+    "vod",
+    "live"
+  ],
+  "resources": [
+    {
+      "name": "catalog",
+      "types": [
+        "channel",
+        "vod",
+        "live"
+      ],
+      "idPrefixes": [
+        "kick_"
+      ]
+    },
+    {
+      "name": "meta",
+      "types": [
+        "channel",
+        "vod",
+        "live"
+      ],
+      "idPrefixes": [
+        "kick_"
+      ]
+    },
+    {
+      "name": "stream",
+      "types": [
+        "live",
+        "vod"
+      ],
+      "idPrefixes": [
+        "kick_"
+      ]
+    }
+  ],
+  "catalogs": [
+    {
+      "type": "live",
+      "id": "kick_live",
+      "name": "Streams ao Vivo",
+      "extra": [
+        {
+          "name": "search",
+          "isRequired": false
+        },
+        {
+          "name": "genre",
+          "isRequired": false,
+          "options": [
+            "gaming",
+            "music",
+            "irl",
+            "creative",
+            "sports",
+            "educational",
+            "just_chatting"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "vod",
+      "id": "kick_vods",
+      "name": "VODs",
+      "extra": [
+        {
+          "name": "search",
+          "isRequired": false
+        }
+      ]
+    },
+    {
+      "type": "channel",
+      "id": "kick_channels",
+      "name": "Canais",
+      "extra": [
+        {
+          "name": "search",
+          "isRequired": false
+        },
+        {
+          "name": "genre",
+          "isRequired": false,
+          "options": [
+            "gaming",
+            "music",
+            "irl",
+            "creative",
+            "sports",
+            "educational",
+            "just_chatting"
+          ]
+        }
+      ]
+    }
+  ],
+  "behaviorHints": {
+    "configurable": true,
+    "configurationRequired": false
+  },
+  "contactEmail": "support@example.com"
+}
