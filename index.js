@@ -5,6 +5,7 @@ const express = require('express');
 const cors = require('cors');
 const manifest = require('./manifest.json');
 const { handleCatalog, handleMeta, handleStream } = require('./src/handlers');
+const { startKeepAlive } = require('./src/keepAlive');
 
 const app = express();
 const PORT = process.env.PORT || 7000;
@@ -18,7 +19,7 @@ const builder = new addonBuilder(manifest);
 
 // Handlers de catálogo
 builder.defineCatalogHandler(async ({ type, id, extra }) => {
-  console.log(`📋 Catálogo requisitado: type=${type}, id=${id}`);
+  console.log(`📚 Catálogo requisitado: type=${type}, id=${id}`);
   return handleCatalog(type, id, extra || {});
 });
 
@@ -115,6 +116,11 @@ app.get('/', (req, res) => {
           margin-left: -20px;
           margin-right: 10px;
         }
+        .status {
+          font-size: 14px;
+          color: #90EE90;
+          margin-top: 10px;
+        }
       </style>
     </head>
     <body>
@@ -124,12 +130,12 @@ app.get('/', (req, res) => {
         
         <div class="info">
           <strong>Instalar o Add-on:</strong><br>
-          <a href="stremio://addon/http://${process.env.HOST || 'localhost'}:${PORT}/manifest.json" class="install-btn">
+          <a href="stremio://addon/https://stremio-kick-addon.onrender.com/manifest.json" class="install-btn">
             Instalar Add-on
           </a>
           <p style="margin-top: 15px; font-size: 12px;">
             Ou copie e cole esta URL no Stremio:<br>
-            <code>http://${process.env.HOST || 'localhost'}:${PORT}/manifest.json</code>
+            <code>https://stremio-kick-addon.onrender.com/manifest.json</code>
           </p>
         </div>
 
@@ -155,7 +161,9 @@ app.get('/', (req, res) => {
         <div class="info" style="margin-top: 30px;">
           <strong>Status do Servidor:</strong> ✅ Online<br>
           <strong>Versão:</strong> 1.0.0<br>
+          <strong>Keep-Alive:</strong> ✅ Ativo<br>
           <strong>Manifesto:</strong> <a href="/manifest.json" style="color: #667eea;">Ver Manifesto</a>
+          <div class="status">Servidor será mantido acordado 24/7 ⏰</div>
         </div>
       </div>
     </body>
@@ -165,7 +173,7 @@ app.get('/', (req, res) => {
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', addon: manifest.name });
+  res.json({ status: 'ok', addon: manifest.name, keepAlive: true });
 });
 
 // Tratamento de erros
@@ -175,16 +183,19 @@ app.use((err, req, res, next) => {
 });
 
 // Iniciar servidor
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`
-╔════════════════════════════════════════╗
-║  🎮 Stremio Kick Add-on                ║
-║  ✅ Servidor rodando                   ║
-║  📍 http://0.0.0.0:${PORT}                    ║
-║  🌐 http://localhost:${PORT}               ║
-║  📦 Manifesto: /manifest.json          ║
-╚════════════════════════════════════════╝
+╔════════════════════════════════════════════════════╗
+║  🎮 Stremio Kick Add-on                            ║
+║  ✅ Servidor rodando                              ║
+║  🌐 https://stremio-kick-addon.onrender.com       ║
+║  📦 /manifest.json                                ║
+║  🔄 Keep-Alive: ATIVO (24/7)                      ║
+╚════════════════════════════════════════════════════╝
   `);
+
+  // Iniciar keep-alive para manter o app acordado no Render
+  startKeepAlive();
 });
 
 // Tratamento de erro não capturado
