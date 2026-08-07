@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  stremio-kick-addon:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    
+    ports:
+      - "7000:7000"
+    
+    environment:
+      - NODE_ENV=production
+      - PORT=7000
+      - HOST=0.0.0.0
+      - CACHE_DURATION=30
+      - MAX_RESULTS=50
+    
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # Descomentar para desenvolvimento
+    # volumes:
+    #   - .:/app
+    #   - /app/node_modules
+    # command: npm run dev
