@@ -1,35 +1,23 @@
 {
   "name": "stremio-kick-addon",
-  "version": "1.0.0",
-  "description": "Add-on Stremio para Kick.com - Busca, Lives, VODs e Canais",
+  "version": "1.1.0",
+  "description": "Stremio add-on for Kick live channels",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js",
-    "test": "jest"
+    "dev": "nodemon index.js"
   },
-  "keywords": [
-    "stremio",
-    "kick",
-    "addon",
-    "streaming",
-    "vod",
-    "live"
-  ],
-  "author": "marcosl84",
-  "license": "MIT",
   "dependencies": {
-    "stremio-addon-sdk": "^1.4.0",
     "axios": "^1.6.0",
-    "express": "^4.18.0",
     "cors": "^2.8.5",
-    "dotenv": "^16.0.0"
+    "dotenv": "^16.0.0",
+    "express": "^4.21.2",
+    "stremio-addon-sdk": "^1.4.0"
   },
   "devDependencies": {
-    "nodemon": "^3.0.0",
-    "jest": "^29.0.0"
+    "nodemon": "^3.0.0"
   },
   "engines": {
-    "node": ">=14.0.0"
+    "node": ">=18"
   }
 }
