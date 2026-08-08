@@ -2,6 +2,7 @@ require("dotenv").config();
 
 const express = require("express");
 const axios = require("axios");
+const crypto = require("crypto");
 const cors = require("cors");
 const { addonBuilder, getRouter } = require("stremio-addon-sdk");
 const manifest = require("./manifest.json");
@@ -53,6 +54,8 @@ function isAllowedProxyTarget(rawUrl) {
 }
 
 function rewriteM3u8(body, sourceUrl, baseUrl) {
+  const cleanBase = String(baseUrl || "").replace(/\/$/, "");
+
   return String(body || "")
     .split("\n")
     .map((line) => {
@@ -61,8 +64,8 @@ function rewriteM3u8(body, sourceUrl, baseUrl) {
 
       try {
         const absolute = new URL(trimmed, sourceUrl).toString();
-        const encoded = encodeProxyTarget(absolute);
-        return `${baseUrl}/proxy/hls?u=${encodeURIComponent(encoded)}`;
+        const token = storeProxyTarget(absolute);
+        return `${cleanBase}/proxy/hls/${encodeURIComponent(token)}`;
       } catch {
         return line;
       }
@@ -70,32 +73,29 @@ function rewriteM3u8(body, sourceUrl, baseUrl) {
     .join("\n");
 }
 
-// IMPORTANT: getInterface() returns an object, not an Express middleware.
-// getRouter() converts the Stremio addon interface into an Express Router.
-const addonRouter = getRouter(builder.getInterface());
+const proxyTargetCache = new Map();
+const PROXY_TARGET_TTL = 8 * 60 * 1000;
 
-// Stremio standard routes: /manifest.json, /catalog/..., /meta/..., /stream/...
-app.get("/proxy/live/:slug.m3u8", async (req, res) => {
-  const slug = String(req.params.slug || "").trim().toLowerCase();
-  if (!slug) return res.status(400).send("invalid slug");
+function storeProxyTarget(url) {
+  const token = crypto.randomBytes(9).toString("base64url");
+  proxyTargetCache.set(token, {
+    url,
+    expires: Date.now() + PROXY_TARGET_TTL
+  });
+  return token;
+}
 
-  try {
-    const stream = await kick.getChannelStream(slug);
-    if (!stream?.playbackUrl) return res.status(404).send("stream offline");
-
-    const encoded = encodeProxyTarget(stream.playbackUrl);
-    const base = `${req.protocol}://${req.get("host")}`;
-    return res.redirect(302, `${base}/proxy/hls?u=${encodeURIComponent(encoded)}`);
-  } catch (err) {
-    console.error("proxy live error:", err.message);
-    return res.status(502).send("proxy error");
+function readProxyTarget(token) {
+  const item = proxyTargetCache.get(String(token || ""));
+  if (!item) return "";
+  if (item.expires < Date.now()) {
+    proxyTargetCache.delete(String(token || ""));
+    return "";
   }
-});
+  return item.url;
+}
 
-app.get("/proxy/hls", async (req, res) => {
-  const encodedTarget = req.query.u;
-  const target = decodeProxyTarget(encodedTarget);
-
+async function proxyUpstreamHls(target, req, res) {
   if (!target || !isAllowedProxyTarget(target)) {
     return res.status(400).send("invalid proxy target");
   }
@@ -138,6 +138,39 @@ app.get("/proxy/hls", async (req, res) => {
     console.error("proxy hls error:", err.response?.status || "", err.message);
     return res.status(502).send("proxy upstream error");
   }
+}
+
+// IMPORTANT: getInterface() returns an object, not an Express middleware.
+// getRouter() converts the Stremio addon interface into an Express Router.
+const addonRouter = getRouter(builder.getInterface());
+
+// Stremio standard routes: /manifest.json, /catalog/..., /meta/..., /stream/...
+app.get("/proxy/live/:slug.m3u8", async (req, res) => {
+  const slug = String(req.params.slug || "").trim().toLowerCase();
+  if (!slug) return res.status(400).send("invalid slug");
+
+  try {
+    const stream = await kick.getChannelStream(slug);
+    if (!stream?.playbackUrl) return res.status(404).send("stream offline");
+    return proxyUpstreamHls(stream.playbackUrl, req, res);
+  } catch (err) {
+    console.error("proxy live error:", err.message);
+    return res.status(502).send("proxy error");
+  }
+});
+
+app.get("/proxy/hls", async (req, res) => {
+  const encodedTarget = req.query.u;
+  const target = decodeProxyTarget(encodedTarget);
+
+  return proxyUpstreamHls(target, req, res);
+});
+
+app.get("/proxy/hls/:token", async (req, res) => {
+  const target = readProxyTarget(req.params.token);
+  if (!target) return res.status(410).send("proxy target expired");
+
+  return proxyUpstreamHls(target, req, res);
 });
 
 app.get("/stream/:type/:id.json", async (req, res, next) => {
