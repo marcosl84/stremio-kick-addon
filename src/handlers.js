@@ -26,6 +26,16 @@ function asString(value, fallback = "") {
   }
 }
 
+function sanitizeText(value, fallback = "") {
+  const text = asString(value, fallback);
+  const clean = text
+    .replace(/[\u0000-\u001F\u007F]+/g, " ")
+    .replace(/[^\x20-\x7E]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return clean || fallback;
+}
+
 function buildLiveStreamEntry(slug, streamInfo, baseUrl) {
   const cleanBase = String(baseUrl || "").replace(/\/$/, "");
   const useLocalProxy = cleanBase && process.env.USE_HLS_PROXY !== "false";
@@ -34,8 +44,8 @@ function buildLiveStreamEntry(slug, streamInfo, baseUrl) {
     : streamInfo.playbackUrl;
 
   return {
-    name: asString(`Kick • ${asString(streamInfo.name, slug)}`),
-    title: asString(streamInfo.title || "Ao vivo"),
+    name: sanitizeText(`Kick - ${asString(streamInfo.name, slug)}`, "Kick Live"),
+    title: sanitizeText(streamInfo.title || "Ao vivo", "Ao vivo"),
     url: asString(playbackUrl)
   };
 }
@@ -48,8 +58,8 @@ function buildVodStreamEntry(vod, baseUrl) {
     : vod.source;
 
   return {
-    name: asString(`Kick VOD • ${asString(vod.channel?.name, vod.slug)}`),
-    title: asString(vod.session_title || "VOD"),
+    name: sanitizeText(`Kick VOD - ${asString(vod.channel?.name, vod.slug)}`, "Kick VOD"),
+    title: sanitizeText(vod.session_title || "VOD", "VOD"),
     url: asString(playbackUrl)
   };
 }
@@ -172,4 +182,4 @@ async function handleStream(type, id, baseUrl = "") {
   return { streams: [] };
 }
 
-module.exports = { handleCatalog, handleMeta, handleStream, toLiveMeta };
+module.exports = { handleCatalog, handleMeta, handleStream, toLiveMeta };module.exports = { handleCatalog, handleMeta, handleStream, toLiveMeta };
