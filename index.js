@@ -71,6 +71,16 @@ function inferProxyContentType(target, upstreamContentType) {
   return upstreamContentType || "application/octet-stream";
 }
 
+function getTargetPathSuffix(rawUrl) {
+  try {
+    const pathname = new URL(String(rawUrl || "https://invalid.local")).pathname.toLowerCase();
+    const match = pathname.match(/(\.(ts|m4s|mp4|aac|key))$/);
+    return match ? match[1] : "";
+  } catch {
+    return "";
+  }
+}
+
 function rewriteM3u8(body, sourceUrl, baseUrl) {
   const cleanBase = String(baseUrl || "").replace(/\/$/, "");
 
@@ -233,17 +243,20 @@ function rememberLiveProxyUrl(slug, absoluteUrl) {
 
   bucket.expires = Date.now() + LIVE_PROXY_STATE_TTL;
   const id = crypto.createHash("sha1").update(String(absoluteUrl || "")).digest("base64url").slice(0, 16);
-  bucket.items.set(id, String(absoluteUrl || ""));
+  bucket.items.set(id, {
+    url: String(absoluteUrl || ""),
+    suffix: getTargetPathSuffix(absoluteUrl)
+  });
   return id;
 }
 
-function recallLiveProxyUrl(slug, id) {
+function recallLiveProxyEntry(slug, id) {
   const bucket = getLiveProxyBucket(slug);
   if (!bucket) return "";
-  const url = bucket.items.get(String(id || "")) || "";
-  if (!url) return "";
+  const entry = bucket.items.get(String(id || ""));
+  if (!entry?.url) return null;
   bucket.expires = Date.now() + LIVE_PROXY_STATE_TTL;
-  return url;
+  return entry;
 }
 
 function rewriteLineUriValue(line, sourceUrl, replacer) {
@@ -270,7 +283,8 @@ function rewriteLivePlaylistForSlug(body, sourceUrl, baseUrl, slug) {
       if (trimmed.startsWith("#EXT-X-MAP") || trimmed.startsWith("#EXT-X-KEY")) {
         return rewriteLineUriValue(line, sourceUrl, (absolute) => {
           const id = rememberLiveProxyUrl(slug, absolute);
-          return id ? `${prefix}${encodeURIComponent(id)}` : absolute;
+          const suffix = getTargetPathSuffix(absolute);
+          return id ? `${prefix}${encodeURIComponent(id)}${suffix}` : absolute;
         });
       }
 
@@ -279,7 +293,8 @@ function rewriteLivePlaylistForSlug(body, sourceUrl, baseUrl, slug) {
       try {
         const absolute = new URL(trimmed, sourceUrl).toString();
         const id = rememberLiveProxyUrl(slug, absolute);
-        return id ? `${prefix}${encodeURIComponent(id)}` : line;
+        const suffix = getTargetPathSuffix(absolute);
+        return id ? `${prefix}${encodeURIComponent(id)}${suffix}` : line;
       } catch {
         return line;
       }
@@ -413,9 +428,10 @@ app.get("/proxy/live/:slug.m3u8", async (req, res) => {
 
 app.get("/proxy/live/:slug/item/:id", async (req, res) => {
   const slug = String(req.params.slug || "").trim().toLowerCase();
-  const target = recallLiveProxyUrl(slug, req.params.id);
-  if (!target) return res.status(410).send("live proxy target expired");
-  return proxyUpstreamHls(target, req, res);
+  const cleanId = String(req.params.id || "").replace(/\.[^.]+$/, "");
+  const entry = recallLiveProxyEntry(slug, cleanId);
+  if (!entry?.url) return res.status(410).send("live proxy target expired");
+  return proxyUpstreamHls(entry.url, req, res);
 });
 
 app.get("/proxy/hls", async (req, res) => {
