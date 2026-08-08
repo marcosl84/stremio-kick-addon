@@ -198,4 +198,67 @@ async function getLiveStreams(search, lang = LIVE_LANG) {
   });
 }
 
-module.exports = { getChannel, getChannelStream, getChannelVideo, getChannelVideos, getVods, getLiveStreams };
+async function searchLiveChannels(query) {
+  const q = query.toLowerCase().trim();
+  const results = [];
+  const seen = new Set();
+
+  // direct slug lookup — most precise match
+  try {
+    const stream = await getChannelStream(q);
+    if (stream) {
+      results.push({ slug: q, name: stream.name || q, title: stream.title, viewers: stream.viewers, avatar: "", banner: "", language: "", isLive: true });
+      seen.add(q);
+    }
+  } catch {}
+
+  // filter through cached live list
+  const live = await getLiveStreams("", "en");
+  for (const ch of live) {
+    if (seen.has(ch.slug)) continue;
+    if (ch.slug.toLowerCase().includes(q) || ch.name.toLowerCase().includes(q) || ch.title.toLowerCase().includes(q)) {
+      results.push(ch);
+      seen.add(ch.slug);
+    }
+  }
+
+  return results.slice(0, MAX);
+}
+
+async function searchVods(query) {
+  const q = query.toLowerCase().trim();
+  const results = [];
+  const seen = new Set();
+
+  // direct channel slug lookup to fetch that channel's full VOD list
+  try {
+    const channel = await getChannel(q);
+    if (channel) {
+      const videos = await getChannelVideos(q);
+      for (const raw of videos) {
+        if (!raw || !raw.source || raw.is_live) continue;
+        const vod = normalizeVod(raw, channel);
+        if (vod) { results.push(vod); seen.add(`${vod.slug}:${vod.id}`); }
+      }
+    }
+  } catch {}
+
+  // also search through cached VOD list
+  const allVods = await getVods("");
+  for (const vod of allVods) {
+    const key = `${vod.slug}:${vod.id}`;
+    if (seen.has(key)) continue;
+    if (
+      vod.session_title?.toLowerCase().includes(q) ||
+      vod.channel.slug.toLowerCase().includes(q) ||
+      vod.channel.name.toLowerCase().includes(q)
+    ) {
+      results.push(vod);
+      seen.add(key);
+    }
+  }
+
+  return results.slice(0, MAX);
+}
+
+module.exports = { getChannel, getChannelStream, getChannelVideo, getChannelVideos, getVods, getLiveStreams, searchLiveChannels, searchVods };
