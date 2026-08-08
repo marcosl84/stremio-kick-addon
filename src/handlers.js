@@ -33,7 +33,7 @@ function toLiveMeta(c) {
 function toVodMeta(v) {
   return {
     id: `kick_vod_${v.slug}_${v.id}`,
-    type: "movie",
+    type: "other",
     name: v.session_title || `VOD de ${v.channel.name}`,
     poster: v.thumbnail?.src || v.channel.avatar || undefined,
     background: v.thumbnail?.src || v.channel.banner || undefined,
@@ -52,7 +52,7 @@ async function handleCatalog(type, id, extra) {
       return { metas: list.map(toLiveMeta) };
     }
 
-    if (type === "movie") {
+    if (type === "other") {
       const list = extra.search
         ? await kick.searchVods(extra.search)
         : await kick.getVods("");
@@ -80,7 +80,7 @@ async function handleMeta(type, id) {
     }
   }
 
-  if (type === "movie") {
+  if (type === "other") {
     const vodInfo = parseVodId(id);
     if (!vodInfo) return null;
 
@@ -122,7 +122,7 @@ async function handleStream(type, id) {
     }
   }
 
-  if (type === "movie") {
+  if (type === "other") {
     const vodInfo = parseVodId(id);
     if (!vodInfo) return { streams: [] };
 
@@ -133,7 +133,7 @@ async function handleStream(type, id) {
       return {
         streams: [{
           name: `Kick VOD • ${vod.channel.name}`,
-          title: vod.session_title || "VOD",
+          description: vod.session_title || "VOD",
           url: vod.source,
           behaviorHints: {
             notWebReady: true,

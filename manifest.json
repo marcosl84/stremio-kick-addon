@@ -5,7 +5,7 @@
   "description": "Canais ao vivo da Kick.com para o Stremio",
   "logo": "https://kick.com/favicon.ico",
   "background": "https://kick.com/og-image.jpg",
-  "types": ["live", "channel", "movie"],
+  "types": ["live", "other"],
   "resources": ["catalog", "meta", "stream"],
   "idPrefixes": ["kick_"],
   "catalogs": [
@@ -18,12 +18,10 @@
       ]
     },
     {
-      "type": "movie",
+      "type": "other",
       "id": "kick_vod",
       "name": "Kick - VOD",
-      "extra": [
-        { "name": "search", "isRequired": false }
-      ]
+      "extra": []
     }
   ],
   "behaviorHints": {
