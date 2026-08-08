@@ -190,6 +190,8 @@ function resolveCompatibleVariantUrl(body, sourceUrl) {
 
 const proxyTargetCache = new Map();
 const PROXY_TARGET_TTL = 8 * 60 * 1000;
+const LIVE_PROXY_STATE_TTL = 2 * 60 * 1000;
+const liveProxyState = new Map();
 
 function storeProxyTarget(url) {
   const token = crypto.randomBytes(9).toString("base64url");
@@ -208,6 +210,81 @@ function readProxyTarget(token) {
     return "";
   }
   return item.url;
+}
+
+function getLiveProxyBucket(slug) {
+  const key = String(slug || "").trim().toLowerCase();
+  if (!key) return null;
+
+  const existing = liveProxyState.get(key);
+  if (existing && existing.expires >= Date.now()) return existing;
+
+  const bucket = {
+    expires: Date.now() + LIVE_PROXY_STATE_TTL,
+    items: new Map()
+  };
+  liveProxyState.set(key, bucket);
+  return bucket;
+}
+
+function rememberLiveProxyUrl(slug, absoluteUrl) {
+  const bucket = getLiveProxyBucket(slug);
+  if (!bucket) return "";
+
+  bucket.expires = Date.now() + LIVE_PROXY_STATE_TTL;
+  const id = crypto.createHash("sha1").update(String(absoluteUrl || "")).digest("base64url").slice(0, 16);
+  bucket.items.set(id, String(absoluteUrl || ""));
+  return id;
+}
+
+function recallLiveProxyUrl(slug, id) {
+  const bucket = getLiveProxyBucket(slug);
+  if (!bucket) return "";
+  const url = bucket.items.get(String(id || "")) || "";
+  if (!url) return "";
+  bucket.expires = Date.now() + LIVE_PROXY_STATE_TTL;
+  return url;
+}
+
+function rewriteLineUriValue(line, sourceUrl, replacer) {
+  return String(line || "").replace(/URI="([^"]+)"/, (_, rawUri) => {
+    try {
+      const absolute = new URL(rawUri, sourceUrl).toString();
+      return `URI="${replacer(absolute)}"`;
+    } catch {
+      return `URI="${rawUri}"`;
+    }
+  });
+}
+
+function rewriteLivePlaylistForSlug(body, sourceUrl, baseUrl, slug) {
+  const cleanBase = String(baseUrl || "").replace(/\/$/, "");
+  const prefix = `${cleanBase}/proxy/live/${encodeURIComponent(slug)}/item/`;
+
+  return String(body || "")
+    .split("\n")
+    .map((line) => {
+      const trimmed = String(line || "").trim();
+      if (!trimmed) return line;
+
+      if (trimmed.startsWith("#EXT-X-MAP") || trimmed.startsWith("#EXT-X-KEY")) {
+        return rewriteLineUriValue(line, sourceUrl, (absolute) => {
+          const id = rememberLiveProxyUrl(slug, absolute);
+          return id ? `${prefix}${encodeURIComponent(id)}` : absolute;
+        });
+      }
+
+      if (trimmed.startsWith("#")) return line;
+
+      try {
+        const absolute = new URL(trimmed, sourceUrl).toString();
+        const id = rememberLiveProxyUrl(slug, absolute);
+        return id ? `${prefix}${encodeURIComponent(id)}` : line;
+      } catch {
+        return line;
+      }
+    })
+    .join("\n");
 }
 
 async function proxyUpstreamHls(target, req, res) {
@@ -291,11 +368,54 @@ app.get("/proxy/live/:slug.m3u8", async (req, res) => {
   try {
     const stream = await kick.getChannelStream(slug);
     if (!stream?.playbackUrl) return res.status(404).send("stream offline");
-    return proxyUpstreamHls(stream.playbackUrl, req, res);
+
+    const upstream = await axios.get(stream.playbackUrl, {
+      responseType: "arraybuffer",
+      timeout: 20000,
+      headers: {
+        Origin: "https://kick.com",
+        Referer: "https://kick.com/",
+        "User-Agent": "Mozilla/5.0 (compatible; Stremio-Kick-Addon/1.2)"
+      },
+      validateStatus: (status) => status >= 200 && status < 400
+    });
+
+    const base = `${req.protocol}://${req.get("host")}`;
+    const masterText = Buffer.from(upstream.data).toString("utf8");
+    const variantUrl = masterText.includes("#EXT-X-STREAM-INF")
+      ? resolveCompatibleVariantUrl(masterText, stream.playbackUrl)
+      : stream.playbackUrl;
+
+    const mediaTarget = variantUrl || stream.playbackUrl;
+    const mediaUpstream = mediaTarget === stream.playbackUrl
+      ? upstream
+      : await axios.get(mediaTarget, {
+          responseType: "arraybuffer",
+          timeout: 20000,
+          headers: {
+            Origin: "https://kick.com",
+            Referer: "https://kick.com/",
+            "User-Agent": "Mozilla/5.0 (compatible; Stremio-Kick-Addon/1.2)"
+          },
+          validateStatus: (status) => status >= 200 && status < 400
+        });
+
+    const mediaText = Buffer.from(mediaUpstream.data).toString("utf8");
+    const rewritten = rewriteLivePlaylistForSlug(mediaText, mediaTarget, base, slug);
+    res.set("Content-Type", "application/vnd.apple.mpegurl");
+    res.set("Cache-Control", "no-store");
+    return res.status(mediaUpstream.status).send(rewritten);
   } catch (err) {
     console.error("proxy live error:", err.message);
     return res.status(502).send("proxy error");
   }
+});
+
+app.get("/proxy/live/:slug/item/:id", async (req, res) => {
+  const slug = String(req.params.slug || "").trim().toLowerCase();
+  const target = recallLiveProxyUrl(slug, req.params.id);
+  if (!target) return res.status(410).send("live proxy target expired");
+  return proxyUpstreamHls(target, req, res);
 });
 
 app.get("/proxy/hls", async (req, res) => {
