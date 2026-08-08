@@ -3,6 +3,7 @@ const axios = require("axios");
 const BASE = "https://kick.com";
 const API = `${BASE}/api/v2`;
 const TTL = Number(process.env.CACHE_DURATION || 60) * 1000;
+const EMPTY_TTL = Number(process.env.CACHE_EMPTY_DURATION || 8) * 1000;
 const MAX = Number(process.env.MAX_RESULTS || 40);
 const VOD_CHANNELS = Number(process.env.VOD_CHANNELS || 8);
 const LIVE_LANG = process.env.KICK_LANG || "pt";
@@ -75,7 +76,13 @@ async function cached(key, fn) {
   const old = cache.get(key);
   if (old && old.expires > Date.now()) return old.value;
   const value = await fn();
-  cache.set(key, { value, expires: Date.now() + TTL });
+
+  // Empty upstream results are common when Kick rate-limits or channels toggle
+  // live/offline. Keep them cached only briefly to reduce false "no streams".
+  const isEmptyArray = Array.isArray(value) && value.length === 0;
+  const isEmptyObject = value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0;
+  const isEmpty = value == null || isEmptyArray || isEmptyObject;
+  cache.set(key, { value, expires: Date.now() + (isEmpty ? EMPTY_TTL : TTL) });
   return value;
 }
 
