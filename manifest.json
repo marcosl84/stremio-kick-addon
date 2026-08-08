@@ -1,6 +1,6 @@
 {
   "id": "com.stremio.kickaddon",
-  "version": "1.2.7",
+  "version": "1.2.8",
   "name": "Kick Live",
   "description": "Canais ao vivo da Kick.com para o Stremio",
   "logo": "https://kick.com/favicon.ico",

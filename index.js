@@ -143,6 +143,35 @@ function rewriteMasterPlaylist(body, sourceUrl, baseUrl) {
   ].join("\n");
 }
 
+function resolveCompatibleVariantUrl(body, sourceUrl) {
+  const lines = String(body || "").split("\n");
+  const variants = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = String(lines[i] || "").trim();
+    if (!line.startsWith("#EXT-X-STREAM-INF")) continue;
+
+    let j = i + 1;
+    while (j < lines.length && !String(lines[j] || "").trim()) j++;
+    const uriLine = String(lines[j] || "").trim();
+    if (!uriLine || uriLine.startsWith("#")) continue;
+
+    try {
+      variants.push({
+        sourceUrl: new URL(uriLine, sourceUrl).toString(),
+        bandwidth: parseNumberFromTag(line, "BANDWIDTH"),
+        frameRate: parseNumberFromTag(line, "FRAME-RATE"),
+        height: parseResolutionHeight(line)
+      });
+      i = j;
+    } catch {
+      // ignore invalid variant line
+    }
+  }
+
+  return chooseCompatibleVariant(variants)?.sourceUrl || "";
+}
+
 const proxyTargetCache = new Map();
 const PROXY_TARGET_TTL = 8 * 60 * 1000;
 
@@ -192,9 +221,31 @@ async function proxyUpstreamHls(target, req, res) {
     if (isPlaylist) {
       const base = `${req.protocol}://${req.get("host")}`;
       const text = Buffer.from(upstream.data).toString("utf8");
-      const rewritten = text.includes("#EXT-X-STREAM-INF")
-        ? rewriteMasterPlaylist(text, target, base)
-        : rewriteM3u8(text, target, base);
+
+      let rewritten = "";
+      if (text.includes("#EXT-X-STREAM-INF")) {
+        const variantUrl = resolveCompatibleVariantUrl(text, target);
+
+        if (variantUrl) {
+          const variant = await axios.get(variantUrl, {
+            responseType: "arraybuffer",
+            timeout: 20000,
+            headers: {
+              Origin: "https://kick.com",
+              Referer: "https://kick.com/",
+              "User-Agent": "Mozilla/5.0 (compatible; Stremio-Kick-Addon/1.2)"
+            },
+            validateStatus: (status) => status >= 200 && status < 400
+          });
+
+          const variantText = Buffer.from(variant.data).toString("utf8");
+          rewritten = rewriteM3u8(variantText, variantUrl, base);
+        } else {
+          rewritten = rewriteMasterPlaylist(text, target, base);
+        }
+      } else {
+        rewritten = rewriteM3u8(text, target, base);
+      }
 
       res.set("Content-Type", "application/vnd.apple.mpegurl");
       res.set("Cache-Control", "no-store");
