@@ -84,6 +84,7 @@ function buildLiveStreamEntries(slug, streamInfo, baseUrl) {
   const cleanBase = String(baseUrl || "").replace(/\/$/, "");
   const useLocalProxy = cleanBase && process.env.USE_HLS_PROXY !== "false";
   const directUrl = asString(streamInfo.playbackUrl);
+  const allowDirectLive = process.env.ALLOW_DIRECT_LIVE_STREAMS === "true";
   const proxyUrl = useLocalProxy
     ? asString(`${cleanBase}/proxy/live/${encodeURIComponent(slug)}.m3u8`)
     : "";
@@ -101,7 +102,7 @@ function buildLiveStreamEntries(slug, streamInfo, baseUrl) {
     });
   }
 
-  if (directUrl) {
+  if (allowDirectLive && directUrl) {
     streams.push({
       name: sanitizeText(`Kick Direct - ${baseName}`, "Kick Direct"),
       title: baseTitle,
