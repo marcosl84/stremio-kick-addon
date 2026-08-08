@@ -60,21 +60,20 @@ async function getChannel(slug) {
 
 async function getChannelStream(slug) {
   return cached(`stream:${slug}`, async () => {
-    // This endpoint is used by Kick's web player and can expose the current
-    // HLS playback URL without requiring a user OAuth token.
     const r = await http.get(`${API}/channels/${encodeURIComponent(slug)}/livestream`);
     const data = r.data?.data || r.data;
     if (!data) return null;
 
-    const channel = normalizeChannel(data.channel || data, true);
-    const playbackUrl = data.playback_url || data.playbackUrl || data.stream?.playback_url;
-
+    const playbackUrl = data.playback_url || data.playbackUrl;
     if (!playbackUrl) return null;
 
     return {
-      ...channel,
+      slug,
+      name: slug,
+      title: data.session_title || "",
+      viewers: data.viewers || 0,
       playbackUrl,
-      streamId: data.id || data.stream_id || `kick_${slug}`
+      streamId: data.id || `kick_${slug}`
     };
   });
 }

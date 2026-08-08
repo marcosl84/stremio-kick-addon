@@ -104,7 +104,7 @@ async function handleStream(type, id) {
       return {
         streams: [{
           name: `Kick • ${s.name}`,
-          title: s.title || "Ao vivo",
+          description: s.title || "Ao vivo",
           url: s.playbackUrl,
           behaviorHints: {
             notWebReady: true,
