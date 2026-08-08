@@ -21,8 +21,8 @@ function toLiveMeta(c) {
     id: `kick_${c.slug}`,
     type: "live",
     name: c.name,
-    poster: c.avatar || undefined,
-    background: c.banner || undefined,
+    poster: c.thumbnail || c.avatar || undefined,
+    background: c.thumbnail || c.banner || undefined,
     logo: c.avatar || undefined,
     description: c.title
       ? `${c.title}${c.viewers ? ` • ${c.viewers} espectadores` : ""}`

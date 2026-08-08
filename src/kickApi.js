@@ -41,7 +41,7 @@ function normalizeChannel(channel, live) {
   return {
     slug,
     name: channel.name || channel.username || channel.user?.username || slug,
-    avatar: channel.avatar || channel.user?.profile_pic || channel.profile_pic || "",
+    avatar: channel.avatar || channel.user?.profilepic || channel.user?.profile_pic || channel.profilepic || "",
     banner: channel.banner_image || channel.banner || "",
     followers: channel.followers_count || channel.followers || 0,
     isLive: !!(live || livestream),
@@ -174,6 +174,9 @@ async function getLiveStreams(search, lang = LIVE_LANG) {
       c.viewers = x.viewer_count || x.viewers || c.viewers;
       c.category = x.category?.name || x.categories?.[0]?.name || c.category;
       c.language = x.language || "";
+      // thumbnail from the live stream entry; avatar from channel user
+      c.thumbnail = x.thumbnail?.src || "";
+      if (!c.avatar && x.channel?.user?.profilepic) c.avatar = x.channel.user.profilepic;
       return c;
     }).filter(Boolean);
 
