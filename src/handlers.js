@@ -16,17 +16,6 @@ function parseVodId(id) {
   return { slug, videoId };
 }
 
-function buildKickProxyHeaders() {
-  return {
-    request: {
-      // Kick costuma validar estes headers para liberar HLS de forma consistente.
-      Origin: "https://kick.com",
-      Referer: "https://kick.com/",
-      "User-Agent": "Mozilla/5.0 (compatible; Stremio-Kick-Addon/1.2)"
-    }
-  };
-}
-
 function buildLiveStreamEntry(slug, streamInfo, baseUrl) {
   const cleanBase = String(baseUrl || "").replace(/\/$/, "");
   const useLocalProxy = cleanBase && process.env.USE_HLS_PROXY !== "false";
@@ -39,8 +28,7 @@ function buildLiveStreamEntry(slug, streamInfo, baseUrl) {
     description: streamInfo.title || "Ao vivo",
     url: playbackUrl,
     behaviorHints: {
-      bingeGroup: `kick_${slug}`,
-      proxyHeaders: buildKickProxyHeaders()
+      bingeGroup: `kick_${slug}`
     }
   };
 }
@@ -57,8 +45,7 @@ function buildVodStreamEntry(vod, baseUrl) {
     description: vod.session_title || "VOD",
     url: playbackUrl,
     behaviorHints: {
-      bingeGroup: `kick_vod_${vod.slug}`,
-      proxyHeaders: buildKickProxyHeaders()
+      bingeGroup: `kick_vod_${vod.slug}`
     }
   };
 }
