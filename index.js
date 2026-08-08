@@ -62,11 +62,16 @@ a{color:#53fc18}
 </div>
 <div class="step">
 <h3>Passo 2 — Abrir o Console do navegador</h3>
-<p>Pressione <strong>F12</strong> (ou clique com botão direito na página → <em>Inspecionar</em>) e clique na aba <strong>Console</strong>.</p>
-<p>Cole o comando abaixo no Console e pressione <strong>Enter</strong>:</p>
+<p>Pressione <strong>F12</strong> e clique na aba <strong>Console</strong>.</p>
+<div class="tip" style="background:#2e1a1a;border-color:#fc5353">
+⚠️ O navegador pode exibir um aviso pedindo para digitar <strong>permitir colagem</strong> e pressionar Enter. Faça isso primeiro, depois cole o comando.
+</div>
+<p>Clique no comando abaixo para copiar, cole no Console e pressione <strong>Enter</strong>:</p>
 <code onclick="copyCmd()" id="cmd">Object.entries(localStorage).filter(([k])=>k.toLowerCase().includes('token')||k.toLowerCase().includes('auth')).map(([k,v])=>k+': '+v).join('\\n') || 'Nenhum token encontrado'</code>
-<p class="copy-hint">👆 Clique para copiar o comando</p>
+<p class="copy-hint">👆 Clique para copiar</p>
 <div class="tip">Se aparecer um texto longo começando com <strong>eyJ</strong>, copie apenas esse valor (sem o nome da chave e sem aspas).</div>
+<br>
+<p><strong>Alternativa (sem Console):</strong> No DevTools, vá em <strong>Application → Local Storage → https://kick.com</strong> e procure uma chave com <em>token</em> no nome cujo valor começa com <strong>eyJ</strong>.</p>
 </div>
 <div class="step">
 <h3>Passo 3 — Inserir o token</h3>
