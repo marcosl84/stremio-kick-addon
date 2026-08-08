@@ -36,32 +36,66 @@ function sanitizeText(value, fallback = "") {
   return clean || fallback;
 }
 
-function buildLiveStreamEntry(slug, streamInfo, baseUrl) {
+function buildLiveStreamEntries(slug, streamInfo, baseUrl) {
   const cleanBase = String(baseUrl || "").replace(/\/$/, "");
   const useLocalProxy = cleanBase && process.env.USE_HLS_PROXY !== "false";
-  const playbackUrl = useLocalProxy
-    ? `${cleanBase}/proxy/live/${encodeURIComponent(slug)}.m3u8`
-    : streamInfo.playbackUrl;
+  const directUrl = asString(streamInfo.playbackUrl);
+  const proxyUrl = useLocalProxy
+    ? asString(`${cleanBase}/proxy/live/${encodeURIComponent(slug)}.m3u8`)
+    : "";
 
-  return {
-    name: sanitizeText(`Kick - ${asString(streamInfo.name, slug)}`, "Kick Live"),
-    title: sanitizeText(streamInfo.title || "Ao vivo", "Ao vivo"),
-    url: asString(playbackUrl)
-  };
+  const baseName = sanitizeText(asString(streamInfo.name, slug), "Kick Live");
+  const baseTitle = sanitizeText(streamInfo.title || "Ao vivo", "Ao vivo");
+
+  const streams = [];
+  if (directUrl) {
+    streams.push({
+      name: sanitizeText(`Kick Direct - ${baseName}`, "Kick Direct"),
+      title: baseTitle,
+      url: directUrl
+    });
+  }
+
+  if (proxyUrl) {
+    streams.push({
+      name: sanitizeText(`Kick Proxy - ${baseName}`, "Kick Proxy"),
+      title: baseTitle,
+      url: proxyUrl
+    });
+  }
+
+  return streams;
 }
 
-function buildVodStreamEntry(vod, baseUrl) {
+function buildVodStreamEntries(vod, baseUrl) {
   const cleanBase = String(baseUrl || "").replace(/\/$/, "");
   const useLocalProxy = cleanBase && process.env.USE_HLS_PROXY !== "false";
-  const playbackUrl = useLocalProxy
-    ? `${cleanBase}/proxy/hls?u=${encodeURIComponent(Buffer.from(vod.source, "utf8").toString("base64url"))}`
-    : vod.source;
+  const directUrl = asString(vod.source);
+  const proxyUrl = useLocalProxy
+    ? asString(`${cleanBase}/proxy/hls?u=${encodeURIComponent(Buffer.from(vod.source, "utf8").toString("base64url"))}`)
+    : "";
 
-  return {
-    name: sanitizeText(`Kick VOD - ${asString(vod.channel?.name, vod.slug)}`, "Kick VOD"),
-    title: sanitizeText(vod.session_title || "VOD", "VOD"),
-    url: asString(playbackUrl)
-  };
+  const baseName = sanitizeText(asString(vod.channel?.name, vod.slug), "Kick VOD");
+  const baseTitle = sanitizeText(vod.session_title || "VOD", "VOD");
+
+  const streams = [];
+  if (directUrl) {
+    streams.push({
+      name: sanitizeText(`Kick VOD Direct - ${baseName}`, "Kick VOD Direct"),
+      title: baseTitle,
+      url: directUrl
+    });
+  }
+
+  if (proxyUrl) {
+    streams.push({
+      name: sanitizeText(`Kick VOD Proxy - ${baseName}`, "Kick VOD Proxy"),
+      title: baseTitle,
+      url: proxyUrl
+    });
+  }
+
+  return streams;
 }
 
 function toLiveMeta(c) {
@@ -154,7 +188,7 @@ async function handleStream(type, id, baseUrl = "") {
       if (!s || !s.playbackUrl) return { streams: [] };
 
       return {
-        streams: [buildLiveStreamEntry(slug, s, baseUrl)]
+        streams: buildLiveStreamEntries(slug, s, baseUrl)
       };
     } catch (err) {
       console.error("Stream error:", err.response?.status || "", err.message);
@@ -171,7 +205,7 @@ async function handleStream(type, id, baseUrl = "") {
       if (!vod || !vod.source) return { streams: [] };
 
       return {
-        streams: [buildVodStreamEntry(vod, baseUrl)]
+        streams: buildVodStreamEntries(vod, baseUrl)
       };
     } catch (err) {
       console.error("Stream error:", err.response?.status || "", err.message);
