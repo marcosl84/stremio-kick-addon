@@ -84,34 +84,19 @@ function buildLiveStreamEntries(slug, streamInfo, baseUrl) {
   const cleanBase = String(baseUrl || "").replace(/\/$/, "");
   const useLocalProxy = cleanBase && process.env.USE_HLS_PROXY !== "false";
   const directUrl = asString(streamInfo.playbackUrl);
-  const allowDirectLive = process.env.ALLOW_DIRECT_LIVE_STREAMS === "true";
   const proxyUrl = useLocalProxy
     ? asString(`${cleanBase}/proxy/live/${encodeURIComponent(slug)}.m3u8`)
     : "";
 
-  const baseName = sanitizeText(asString(streamInfo.name, slug), "Kick Live");
   const baseTitle = sanitizeText(streamInfo.title || "Ao vivo", "Ao vivo");
+  const url = proxyUrl || directUrl;
+  if (!url) return [];
 
-  const streams = [];
-  if (proxyUrl) {
-    streams.push({
-      name: sanitizeText(`Kick Proxy - ${baseName}`, "Kick Proxy"),
-      title: baseTitle,
-      description: baseTitle,
-      url: proxyUrl
-    });
-  }
-
-  if (allowDirectLive && directUrl) {
-    streams.push({
-      name: sanitizeText(`Kick Direct - ${baseName}`, "Kick Direct"),
-      title: baseTitle,
-      description: baseTitle,
-      url: directUrl
-    });
-  }
-
-  return streams;
+  return [{
+    name: "Kick Live",
+    description: baseTitle,
+    url
+  }];
 }
 
 function buildVodStreamEntries(vod, baseUrl) {
