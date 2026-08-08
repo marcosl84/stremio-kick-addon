@@ -1,5 +1,7 @@
 const kick = require("./kickApi");
 
+const FALLBACK_IMAGE = "https://kick.com/favicon.ico";
+
 function cleanId(id) {
   return String(id || "")
     .replace(/^kick_/, "")
@@ -36,6 +38,12 @@ function sanitizeText(value, fallback = "") {
   return clean || fallback;
 }
 
+function safeImage(value) {
+  const text = asString(value, "").trim();
+  if (!text || text === "null" || text === "undefined") return FALLBACK_IMAGE;
+  return text;
+}
+
 function buildLiveStreamEntries(slug, streamInfo, baseUrl) {
   const cleanBase = String(baseUrl || "").replace(/\/$/, "");
   const useLocalProxy = cleanBase && process.env.USE_HLS_PROXY !== "false";
@@ -52,6 +60,7 @@ function buildLiveStreamEntries(slug, streamInfo, baseUrl) {
     streams.push({
       name: sanitizeText(`Kick Direct - ${baseName}`, "Kick Direct"),
       title: baseTitle,
+      description: baseTitle,
       url: directUrl
     });
   }
@@ -60,6 +69,7 @@ function buildLiveStreamEntries(slug, streamInfo, baseUrl) {
     streams.push({
       name: sanitizeText(`Kick Proxy - ${baseName}`, "Kick Proxy"),
       title: baseTitle,
+      description: baseTitle,
       url: proxyUrl
     });
   }
@@ -83,6 +93,7 @@ function buildVodStreamEntries(vod, baseUrl) {
     streams.push({
       name: sanitizeText(`Kick VOD Direct - ${baseName}`, "Kick VOD Direct"),
       title: baseTitle,
+      description: baseTitle,
       url: directUrl
     });
   }
@@ -91,6 +102,7 @@ function buildVodStreamEntries(vod, baseUrl) {
     streams.push({
       name: sanitizeText(`Kick VOD Proxy - ${baseName}`, "Kick VOD Proxy"),
       title: baseTitle,
+      description: baseTitle,
       url: proxyUrl
     });
   }
@@ -102,10 +114,10 @@ function toLiveMeta(c) {
   return {
     id: `kick_${c.slug}`,
     type: "live",
-    name: c.name,
-    poster: c.thumbnail || c.avatar || undefined,
-    background: c.thumbnail || c.banner || undefined,
-    logo: c.avatar || undefined,
+    name: sanitizeText(c.name, c.slug),
+    poster: safeImage(c.thumbnail || c.avatar),
+    background: safeImage(c.thumbnail || c.banner || c.avatar),
+    logo: safeImage(c.avatar || c.thumbnail),
     description: c.title
       ? `${c.title}${c.viewers ? ` • ${c.viewers} espectadores` : ""}`
       : `Canal ${c.name} na Kick`
@@ -116,10 +128,10 @@ function toVodMeta(v) {
   return {
     id: `kick_vod_${v.slug}_${v.id}`,
     type: "other",
-    name: v.session_title || `VOD de ${v.channel.name}`,
-    poster: v.thumbnail?.src || v.channel.avatar || undefined,
-    background: v.thumbnail?.src || v.channel.banner || undefined,
-    logo: v.channel.avatar || undefined,
+    name: sanitizeText(v.session_title || `VOD de ${v.channel.name}`, "Kick VOD"),
+    poster: safeImage(v.thumbnail?.src || v.channel.avatar),
+    background: safeImage(v.thumbnail?.src || v.channel.banner || v.channel.avatar),
+    logo: safeImage(v.channel.avatar || v.thumbnail?.src),
     description: `${v.category ? `${v.category} • ` : ""}${v.language || ""}${v.duration ? ` • ${Math.floor(v.duration / 60)} min` : ""}`,
     runtime: v.duration ? Number(v.duration) : undefined
   };
@@ -216,4 +228,4 @@ async function handleStream(type, id, baseUrl = "") {
   return { streams: [] };
 }
 
-module.exports = { handleCatalog, handleMeta, handleStream, toLiveMeta };module.exports = { handleCatalog, handleMeta, handleStream, toLiveMeta };
+module.exports = { handleCatalog, handleMeta, handleStream, toLiveMeta };
