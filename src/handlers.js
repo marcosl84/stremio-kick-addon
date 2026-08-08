@@ -43,8 +43,17 @@ function isHttpUrl(value) {
   return /^https?:\/\/.+/i.test(text);
 }
 
+function isLikelyImageUrl(value) {
+  const text = asString(value, "").trim();
+  if (!isHttpUrl(text)) return false;
+
+  // Accept known Kick image CDNs and common image file extensions.
+  if (/^https?:\/\/(files|images)\.kick\.com\//i.test(text)) return true;
+  return /\.(png|jpg|jpeg|webp|gif|avif)(\?.*)?$/i.test(text);
+}
+
 function extractImageUrl(value) {
-  if (isHttpUrl(value)) return asString(value).trim();
+  if (isLikelyImageUrl(value)) return asString(value).trim();
   if (!value || typeof value !== "object") return "";
 
   const candidates = [
@@ -60,7 +69,7 @@ function extractImageUrl(value) {
   ];
 
   for (const candidate of candidates) {
-    if (isHttpUrl(candidate)) return asString(candidate).trim();
+    if (isLikelyImageUrl(candidate)) return asString(candidate).trim();
   }
 
   return "";
