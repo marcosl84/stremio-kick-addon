@@ -59,6 +59,18 @@ function isAllowedProxyTarget(rawUrl) {
   }
 }
 
+function inferProxyContentType(target, upstreamContentType) {
+  const type = String(upstreamContentType || "").toLowerCase();
+  if (type && type !== "application/octet-stream") return upstreamContentType;
+
+  const lowerTarget = String(target || "").toLowerCase();
+  if (lowerTarget.includes(".ts")) return "video/mp2t";
+  if (lowerTarget.includes(".aac")) return "audio/aac";
+  if (lowerTarget.includes(".m4s")) return "video/iso.segment";
+  if (lowerTarget.includes(".mp4")) return "video/mp4";
+  return upstreamContentType || "application/octet-stream";
+}
+
 function rewriteM3u8(body, sourceUrl, baseUrl) {
   const cleanBase = String(baseUrl || "").replace(/\/$/, "");
 
@@ -256,7 +268,7 @@ async function proxyUpstreamHls(target, req, res) {
       return res.status(upstream.status).send(rewritten);
     }
 
-    if (upstream.headers["content-type"]) res.set("Content-Type", upstream.headers["content-type"]);
+    res.set("Content-Type", inferProxyContentType(target, upstream.headers["content-type"]));
     if (upstream.headers["accept-ranges"]) res.set("Accept-Ranges", upstream.headers["accept-ranges"]);
     if (upstream.headers["content-range"]) res.set("Content-Range", upstream.headers["content-range"]);
     if (upstream.headers["cache-control"]) res.set("Cache-Control", upstream.headers["cache-control"]);
