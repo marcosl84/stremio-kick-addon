@@ -27,11 +27,17 @@ function buildKickProxyHeaders() {
   };
 }
 
-function buildLiveStreamEntry(slug, streamInfo) {
+function buildLiveStreamEntry(slug, streamInfo, baseUrl) {
+  const cleanBase = String(baseUrl || "").replace(/\/$/, "");
+  const useLocalProxy = cleanBase && process.env.USE_HLS_PROXY !== "false";
+  const playbackUrl = useLocalProxy
+    ? `${cleanBase}/proxy/live/${encodeURIComponent(slug)}.m3u8`
+    : streamInfo.playbackUrl;
+
   return {
     name: `Kick • ${streamInfo.name}`,
     description: streamInfo.title || "Ao vivo",
-    url: streamInfo.playbackUrl,
+    url: playbackUrl,
     behaviorHints: {
       bingeGroup: `kick_${slug}`,
       proxyHeaders: buildKickProxyHeaders()
@@ -39,11 +45,17 @@ function buildLiveStreamEntry(slug, streamInfo) {
   };
 }
 
-function buildVodStreamEntry(vod) {
+function buildVodStreamEntry(vod, baseUrl) {
+  const cleanBase = String(baseUrl || "").replace(/\/$/, "");
+  const useLocalProxy = cleanBase && process.env.USE_HLS_PROXY !== "false";
+  const playbackUrl = useLocalProxy
+    ? `${cleanBase}/proxy/hls?u=${encodeURIComponent(Buffer.from(vod.source, "utf8").toString("base64url"))}`
+    : vod.source;
+
   return {
     name: `Kick VOD • ${vod.channel.name}`,
     description: vod.session_title || "VOD",
-    url: vod.source,
+    url: playbackUrl,
     behaviorHints: {
       bingeGroup: `kick_vod_${vod.slug}`,
       proxyHeaders: buildKickProxyHeaders()
@@ -131,7 +143,7 @@ async function handleMeta(type, id) {
   return null;
 }
 
-async function handleStream(type, id) {
+async function handleStream(type, id, baseUrl = "") {
   if (type === "live") {
     const slug = cleanId(id);
     if (!slug) return { streams: [] };
@@ -141,7 +153,7 @@ async function handleStream(type, id) {
       if (!s || !s.playbackUrl) return { streams: [] };
 
       return {
-        streams: [buildLiveStreamEntry(slug, s)]
+        streams: [buildLiveStreamEntry(slug, s, baseUrl)]
       };
     } catch (err) {
       console.error("Stream error:", err.response?.status || "", err.message);
@@ -158,7 +170,7 @@ async function handleStream(type, id) {
       if (!vod || !vod.source) return { streams: [] };
 
       return {
-        streams: [buildVodStreamEntry(vod)]
+        streams: [buildVodStreamEntry(vod, baseUrl)]
       };
     } catch (err) {
       console.error("Stream error:", err.response?.status || "", err.message);

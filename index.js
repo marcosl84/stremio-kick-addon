@@ -1,6 +1,7 @@
 require("dotenv").config();
 
 const express = require("express");
+const axios = require("axios");
 const cors = require("cors");
 const { addonBuilder, getRouter } = require("stremio-addon-sdk");
 const manifest = require("./manifest.json");
@@ -29,11 +30,126 @@ builder.defineStreamHandler(async ({ type, id }) => {
   return handleStream(type, id);
 });
 
+function encodeProxyTarget(url) {
+  return Buffer.from(url, "utf8").toString("base64url");
+}
+
+function decodeProxyTarget(value) {
+  try {
+    return Buffer.from(String(value || ""), "base64url").toString("utf8");
+  } catch {
+    return "";
+  }
+}
+
+function isAllowedProxyTarget(rawUrl) {
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== "https:") return false;
+    return /(^|\.)live-video\.net$/i.test(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function rewriteM3u8(body, sourceUrl, baseUrl) {
+  return String(body || "")
+    .split("\n")
+    .map((line) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) return line;
+
+      try {
+        const absolute = new URL(trimmed, sourceUrl).toString();
+        const encoded = encodeProxyTarget(absolute);
+        return `${baseUrl}/proxy/hls?u=${encodeURIComponent(encoded)}`;
+      } catch {
+        return line;
+      }
+    })
+    .join("\n");
+}
+
 // IMPORTANT: getInterface() returns an object, not an Express middleware.
 // getRouter() converts the Stremio addon interface into an Express Router.
 const addonRouter = getRouter(builder.getInterface());
 
 // Stremio standard routes: /manifest.json, /catalog/..., /meta/..., /stream/...
+app.get("/proxy/live/:slug.m3u8", async (req, res) => {
+  const slug = String(req.params.slug || "").trim().toLowerCase();
+  if (!slug) return res.status(400).send("invalid slug");
+
+  try {
+    const stream = await kick.getChannelStream(slug);
+    if (!stream?.playbackUrl) return res.status(404).send("stream offline");
+
+    const encoded = encodeProxyTarget(stream.playbackUrl);
+    const base = `${req.protocol}://${req.get("host")}`;
+    return res.redirect(302, `${base}/proxy/hls?u=${encodeURIComponent(encoded)}`);
+  } catch (err) {
+    console.error("proxy live error:", err.message);
+    return res.status(502).send("proxy error");
+  }
+});
+
+app.get("/proxy/hls", async (req, res) => {
+  const encodedTarget = req.query.u;
+  const target = decodeProxyTarget(encodedTarget);
+
+  if (!target || !isAllowedProxyTarget(target)) {
+    return res.status(400).send("invalid proxy target");
+  }
+
+  try {
+    const upstream = await axios.get(target, {
+      responseType: "arraybuffer",
+      timeout: 20000,
+      headers: {
+        Origin: "https://kick.com",
+        Referer: "https://kick.com/",
+        "User-Agent": "Mozilla/5.0 (compatible; Stremio-Kick-Addon/1.2)",
+        ...(req.headers.range ? { Range: req.headers.range } : {})
+      },
+      validateStatus: (status) => status >= 200 && status < 400
+    });
+
+    const contentType = String(upstream.headers["content-type"] || "").toLowerCase();
+    const isPlaylist =
+      target.includes(".m3u8") ||
+      contentType.includes("mpegurl") ||
+      contentType.includes("vnd.apple.mpegurl");
+
+    if (isPlaylist) {
+      const base = `${req.protocol}://${req.get("host")}`;
+      const text = Buffer.from(upstream.data).toString("utf8");
+      const rewritten = rewriteM3u8(text, target, base);
+
+      res.set("Content-Type", "application/vnd.apple.mpegurl");
+      res.set("Cache-Control", "no-store");
+      return res.status(upstream.status).send(rewritten);
+    }
+
+    if (upstream.headers["content-type"]) res.set("Content-Type", upstream.headers["content-type"]);
+    if (upstream.headers["accept-ranges"]) res.set("Accept-Ranges", upstream.headers["accept-ranges"]);
+    if (upstream.headers["content-range"]) res.set("Content-Range", upstream.headers["content-range"]);
+    if (upstream.headers["cache-control"]) res.set("Cache-Control", upstream.headers["cache-control"]);
+    return res.status(upstream.status).send(Buffer.from(upstream.data));
+  } catch (err) {
+    console.error("proxy hls error:", err.response?.status || "", err.message);
+    return res.status(502).send("proxy upstream error");
+  }
+});
+
+app.get("/stream/:type/:id.json", async (req, res, next) => {
+  try {
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    const result = await handleStream(req.params.type, req.params.id, baseUrl);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
 app.use("/", addonRouter);
 
 app.get("/configure", (req, res) => {
@@ -169,7 +285,8 @@ async function tokenStream(req, res) {
   const token = decodeURIComponent(req.params.token);
   if (RESERVED.has(token)) return res.status(404).end();
   try {
-    const result = await handleStream(req.params.type, req.params.id);
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    const result = await handleStream(req.params.type, req.params.id, baseUrl);
     res.json(result);
   } catch { res.json({ streams: [] }); }
 }
