@@ -38,10 +38,37 @@ function sanitizeText(value, fallback = "") {
   return clean || fallback;
 }
 
-function safeImage(value) {
+function isHttpUrl(value) {
   const text = asString(value, "").trim();
-  if (!text || text === "null" || text === "undefined") return FALLBACK_IMAGE;
-  return text;
+  return /^https?:\/\/.+/i.test(text);
+}
+
+function extractImageUrl(value) {
+  if (isHttpUrl(value)) return asString(value).trim();
+  if (!value || typeof value !== "object") return "";
+
+  const candidates = [
+    value.src,
+    value.url,
+    value.thumbnail,
+    value.image,
+    value.full,
+    value.original,
+    value.large,
+    value.medium,
+    value.small
+  ];
+
+  for (const candidate of candidates) {
+    if (isHttpUrl(candidate)) return asString(candidate).trim();
+  }
+
+  return "";
+}
+
+function safeImage(value) {
+  const found = extractImageUrl(value);
+  return found || FALLBACK_IMAGE;
 }
 
 function buildLiveStreamEntries(slug, streamInfo, baseUrl) {
