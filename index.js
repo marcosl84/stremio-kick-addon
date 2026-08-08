@@ -45,39 +45,47 @@ body{font-family:Arial,sans-serif;max-width:680px;margin:40px auto;padding:20px;
 h1{color:#53fc18}h3{color:#53fc18}
 .step{background:#1a1a1a;padding:16px;border-radius:8px;margin:16px 0}
 input{width:100%;padding:12px;background:#111;border:1px solid #53fc18;color:#fff;border-radius:4px;font-size:14px;box-sizing:border-box}
-btn,button{background:#53fc18;color:#000;border:none;padding:12px 24px;border-radius:4px;cursor:pointer;font-weight:bold;margin-top:12px;display:inline-block;text-decoration:none}
-code{background:#333;padding:2px 6px;border-radius:3px;font-size:12px}
+button{background:#53fc18;color:#000;border:none;padding:12px 24px;border-radius:4px;cursor:pointer;font-weight:bold;margin-top:12px}
+code{background:#222;padding:8px 12px;border-radius:4px;font-size:13px;display:block;word-break:break-all;color:#53fc18;margin:8px 0;cursor:pointer}
+.copy-hint{font-size:11px;color:#888;margin-top:-4px}
 #result{display:none;margin-top:16px}
 #addon-url{word-break:break-all;background:#111;padding:12px;border-radius:4px;color:#53fc18;margin-top:8px}
 a{color:#53fc18}
+.tip{background:#1a2e1a;border-left:3px solid #53fc18;padding:10px 14px;border-radius:4px;margin:8px 0}
 </style></head>
 <body>
 <h1>🎮 Kick Live — Vincular Conta</h1>
-<p>Para ver seus canais inscritos e seguidos, insira seu token de acesso do Kick.</p>
+<p>Siga os passos abaixo para ver seus canais seguidos e inscritos no Stremio.</p>
 <div class="step">
-<h3>Como obter o token</h3>
-<ol>
-<li>Abra <a href="https://kick.com" target="_blank">kick.com</a> e faça login</li>
-<li>Pressione <code>F12</code> → aba <strong>Network</strong></li>
-<li>Recarregue a página</li>
-<li>Clique em qualquer requisição para <code>kick.com/api</code></li>
-<li>Em <strong>Request Headers</strong>, copie o valor de <code>Authorization</code> <em>(sem o prefixo "Bearer ")</em></li>
-</ol>
+<h3>Passo 1 — Abrir o Kick.com logado</h3>
+<p>Acesse <a href="https://kick.com" target="_blank">kick.com</a> e certifique-se de estar logado na sua conta.</p>
 </div>
 <div class="step">
-<h3>Inserir token</h3>
-<input type="text" id="token" placeholder="Cole seu token aqui..." />
+<h3>Passo 2 — Abrir o Console do navegador</h3>
+<p>Pressione <strong>F12</strong> (ou clique com botão direito na página → <em>Inspecionar</em>) e clique na aba <strong>Console</strong>.</p>
+<p>Cole o comando abaixo no Console e pressione <strong>Enter</strong>:</p>
+<code onclick="copyCmd()" id="cmd">Object.entries(localStorage).filter(([k])=>k.toLowerCase().includes('token')||k.toLowerCase().includes('auth')).map(([k,v])=>k+': '+v).join('\\n') || 'Nenhum token encontrado'</code>
+<p class="copy-hint">👆 Clique para copiar o comando</p>
+<div class="tip">Se aparecer um texto longo começando com <strong>eyJ</strong>, copie apenas esse valor (sem o nome da chave e sem aspas).</div>
+</div>
+<div class="step">
+<h3>Passo 3 — Inserir o token</h3>
+<input type="text" id="token" placeholder="Cole aqui o valor que começa com eyJ..." />
 <button onclick="gen()">Gerar URL personalizada</button>
 </div>
 <div id="result" class="step">
-<h3>Instalar no Stremio</h3>
-<p>Copie a URL abaixo e adicione manualmente no Stremio (Add-ons → Add by URL):</p>
+<h3>Passo 4 — Instalar no Stremio</h3>
+<p>Adicione a URL abaixo no Stremio (Add-ons → <em>Add by URL</em>):</p>
 <div id="addon-url"></div>
 <br>
 <button onclick="install()">Instalar direto no Stremio</button>
 </div>
 <script>
 const base='${base}';
+function copyCmd(){
+  navigator.clipboard.writeText(document.getElementById('cmd').textContent);
+  alert('Copiado! Cole no Console do navegador.');
+}
 function gen(){
   const t=document.getElementById('token').value.trim();
   if(!t)return alert('Insira seu token!');
