@@ -6,10 +6,12 @@ const TTL = Number(process.env.CACHE_DURATION || 60) * 1000;
 const MAX = Number(process.env.MAX_RESULTS || 40);
 const VOD_CHANNELS = Number(process.env.VOD_CHANNELS || 8);
 const LIVE_LANG = process.env.KICK_LANG || "pt";
-const FALLBACK_LIVE_SLUGS = String(process.env.KICK_FALLBACK_LIVE_SLUGS || "baianotv,gaules,casimito,alanzoka,nobru")
+const FALLBACK_LIVE_SLUGS = String(process.env.KICK_FALLBACK_LIVE_SLUGS || "baianotv,gaules,casimito,alanzoka,nobru,coringa,fpsn1,flowgames,neymarjr,ronaldinho,xqc,adinross,amouranth,trainwreckstv,westcol,elmariana,rivers_gg,ibai,rubius,auronplay")
   .split(",")
   .map(x => x.trim().toLowerCase())
   .filter(Boolean);
+const LIVE_LIST_TIMEOUT = Number(process.env.KICK_LIVE_LIST_TIMEOUT_MS || 3500);
+const FAST_PROBE_TIMEOUT = Number(process.env.KICK_FAST_PROBE_TIMEOUT_MS || 3500);
 
 const http = axios.create({
   timeout: 12000,
@@ -42,21 +44,24 @@ async function listLiveByFallbackSlugs(search = "") {
 
   const results = await Promise.all(slugs.map(async slug => {
     try {
-      const stream = await getChannelStream(slug);
-      if (!stream || !stream.playbackUrl) return null;
+      const r = await axios.get(`${API}/channels/${encodeURIComponent(slug)}`, {
+        timeout: FAST_PROBE_TIMEOUT,
+        headers: http.defaults.headers
+      });
+      const ch = r.data?.data || r.data;
+      if (!ch?.playback_url || !ch?.livestream) return null;
 
-      const channel = await getChannel(slug).catch(() => null);
       return {
         slug,
-        name: channel?.name || stream.name || slug,
-        avatar: channel?.avatar || "",
-        banner: channel?.banner || "",
-        followers: channel?.followers || 0,
+        name: ch.name || ch.username || ch.user?.username || slug,
+        avatar: ch.avatar || ch.user?.profilepic || ch.user?.profile_pic || ch.profilepic || "",
+        banner: ch.banner_image || ch.banner || "",
+        followers: ch.followers_count || ch.followers || 0,
         isLive: true,
-        title: stream.title || channel?.title || "",
-        viewers: stream.viewers || channel?.viewers || 0,
-        category: channel?.category || "",
-        language: ""
+        title: ch.livestream?.session_title || "",
+        viewers: ch.livestream?.viewer_count || 0,
+        category: ch.livestream?.categories?.[0]?.name || ch.livestream?.category?.name || "",
+        language: ch.livestream?.language || ""
       };
     } catch {
       return null;
@@ -216,6 +221,7 @@ async function getLiveStreams(search, lang = LIVE_LANG) {
     for (let page = 1; page <= pages; page++) {
       try {
         const r = await http.get(url, {
+          timeout: LIVE_LIST_TIMEOUT,
           params: { page, limit: 24, sort: "desc" },
           headers: { "Accept": "application/json, text/plain, */*" }
         });
