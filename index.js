@@ -73,6 +73,76 @@ function rewriteM3u8(body, sourceUrl, baseUrl) {
     .join("\n");
 }
 
+function parseNumberFromTag(tag, key) {
+  const m = String(tag || "").match(new RegExp(`${key}=([0-9.]+)`));
+  return m ? Number(m[1]) : 0;
+}
+
+function parseResolutionHeight(tag) {
+  const m = String(tag || "").match(/RESOLUTION=(\d+)x(\d+)/);
+  return m ? Number(m[2]) : 0;
+}
+
+function chooseCompatibleVariant(variants) {
+  if (!variants.length) return null;
+
+  const scored = variants.map((variant) => {
+    let penalty = 0;
+    if (variant.height > 720) penalty += 1000;
+    if (variant.frameRate > 30) penalty += 500;
+    if (variant.bandwidth > 4500000) penalty += 200;
+    return { ...variant, penalty };
+  });
+
+  scored.sort((a, b) => {
+    if (a.penalty !== b.penalty) return a.penalty - b.penalty;
+    return b.bandwidth - a.bandwidth;
+  });
+
+  return scored[0] || null;
+}
+
+function rewriteMasterPlaylist(body, sourceUrl, baseUrl) {
+  const cleanBase = String(baseUrl || "").replace(/\/$/, "");
+  const lines = String(body || "").split("\n");
+  const variants = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = String(lines[i] || "").trim();
+    if (!line.startsWith("#EXT-X-STREAM-INF")) continue;
+
+    let j = i + 1;
+    while (j < lines.length && !String(lines[j] || "").trim()) j++;
+    const uriLine = String(lines[j] || "").trim();
+    if (!uriLine || uriLine.startsWith("#")) continue;
+
+    try {
+      const absolute = new URL(uriLine, sourceUrl).toString();
+      const token = storeProxyTarget(absolute);
+      variants.push({
+        inf: line,
+        url: `${cleanBase}/proxy/hls/${encodeURIComponent(token)}`,
+        bandwidth: parseNumberFromTag(line, "BANDWIDTH"),
+        frameRate: parseNumberFromTag(line, "FRAME-RATE"),
+        height: parseResolutionHeight(line)
+      });
+      i = j;
+    } catch {
+      // ignore invalid variant line
+    }
+  }
+
+  const selected = chooseCompatibleVariant(variants);
+  if (!selected) return rewriteM3u8(body, sourceUrl, baseUrl);
+
+  return [
+    "#EXTM3U",
+    "#EXT-X-VERSION:3",
+    selected.inf,
+    selected.url
+  ].join("\n");
+}
+
 const proxyTargetCache = new Map();
 const PROXY_TARGET_TTL = 8 * 60 * 1000;
 
@@ -122,7 +192,9 @@ async function proxyUpstreamHls(target, req, res) {
     if (isPlaylist) {
       const base = `${req.protocol}://${req.get("host")}`;
       const text = Buffer.from(upstream.data).toString("utf8");
-      const rewritten = rewriteM3u8(text, target, base);
+      const rewritten = text.includes("#EXT-X-STREAM-INF")
+        ? rewriteMasterPlaylist(text, target, base)
+        : rewriteM3u8(text, target, base);
 
       res.set("Content-Type", "application/vnd.apple.mpegurl");
       res.set("Cache-Control", "no-store");
