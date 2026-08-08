@@ -61,17 +61,31 @@ a{color:#53fc18}
 <p>Acesse <a href="https://kick.com" target="_blank">kick.com</a> e certifique-se de estar logado na sua conta.</p>
 </div>
 <div class="step">
-<h3>Passo 2 — Abrir o Console do navegador</h3>
-<p>Pressione <strong>F12</strong> e clique na aba <strong>Console</strong>.</p>
-<div class="tip" style="background:#2e1a1a;border-color:#fc5353">
-⚠️ O navegador pode exibir um aviso pedindo para digitar <strong>permitir colagem</strong> e pressionar Enter. Faça isso primeiro, depois cole o comando.
-</div>
-<p>Clique no comando abaixo para copiar, cole no Console e pressione <strong>Enter</strong>:</p>
-<code onclick="copyCmd()" id="cmd">Object.entries(localStorage).filter(([k])=>k.toLowerCase().includes('token')||k.toLowerCase().includes('auth')).map(([k,v])=>k+': '+v).join('\\n') || 'Nenhum token encontrado'</code>
+<h3>Passo 2 — Obter o token</h3>
+<p>Existem dois métodos. Use o que funcionar:</p>
+
+<p><strong>Método A — Application tab (mais fácil)</strong></p>
+<ol>
+<li>Pressione <strong>F12</strong> → clique na aba <strong>Application</strong> (Chrome) ou <strong>Storage</strong> (Firefox)</li>
+<li>No menu esquerdo: <strong>Cookies → https://kick.com</strong></li>
+<li>Procure uma linha com <strong>kick_session</strong> ou <strong>token</strong> na coluna Name</li>
+<li>Clique nela e copie o valor da coluna <strong>Value</strong></li>
+</ol>
+
+<p><strong>Método B — Network tab</strong></p>
+<ol>
+<li>F12 → aba <strong>Network</strong></li>
+<li>No campo de filtro, digite <strong>api/v2</strong></li>
+<li>Clique em qualquer botão no site (ex: seu perfil)</li>
+<li>Clique na requisição que aparecer → aba <strong>Headers</strong></li>
+<li>Em <em>Request Headers</em>, copie o valor de <strong>Authorization</strong> <em>(sem "Bearer ")</em></li>
+</ol>
+
+<p><strong>Método C — Console</strong></p>
+<p>F12 → Console → se pedir, digite <code style="display:inline;padding:2px 6px">permitir colagem</code> + Enter, depois cole:</p>
+<code onclick="copyCmd()" id="cmd">var r=[];try{document.cookie.split(';').forEach(c=>{var p=c.trim().split('=');if(p[0].toLowerCase().includes('token')||p[0].toLowerCase().includes('auth')||p[0].includes('kick'))r.push('cookie.'+p[0]+': '+p.slice(1).join('='));})}catch(e){}try{Object.entries(sessionStorage).filter(([k])=>k.toLowerCase().includes('token')||k.toLowerCase().includes('auth')).forEach(([k,v])=>r.push('session.'+k+': '+v))}catch(e){}r.join('\\n')||'Nenhum encontrado - use Método A ou B'</code>
 <p class="copy-hint">👆 Clique para copiar</p>
-<div class="tip">Se aparecer um texto longo começando com <strong>eyJ</strong>, copie apenas esse valor (sem o nome da chave e sem aspas).</div>
-<br>
-<p><strong>Alternativa (sem Console):</strong> No DevTools, vá em <strong>Application → Local Storage → https://kick.com</strong> e procure uma chave com <em>token</em> no nome cujo valor começa com <strong>eyJ</strong>.</p>
+<div class="tip">O token começa com <strong>eyJ</strong>. Copie apenas esse valor longo, sem aspas.</div>
 </div>
 <div class="step">
 <h3>Passo 3 — Inserir o token</h3>
