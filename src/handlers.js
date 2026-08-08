@@ -46,12 +46,16 @@ function toVodMeta(v) {
 async function handleCatalog(type, id, extra) {
   try {
     if (type === "live") {
-      const list = await kick.getLiveStreams(extra.search);
+      const list = extra.search
+        ? await kick.searchLiveChannels(extra.search)
+        : await kick.getLiveStreams("", "pt");
       return { metas: list.map(toLiveMeta) };
     }
 
     if (type === "movie") {
-      const list = await kick.getVods(extra.search);
+      const list = extra.search
+        ? await kick.searchVods(extra.search)
+        : await kick.getVods("");
       return { metas: list.map(toVodMeta) };
     }
 
