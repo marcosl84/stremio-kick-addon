@@ -3,6 +3,7 @@ require("dotenv").config();
 const express = require("express");
 const axios = require("axios");
 const crypto = require("crypto");
+const zlib = require("zlib");
 const cors = require("cors");
 const { addonBuilder, getRouter } = require("stremio-addon-sdk");
 const manifest = require("./manifest.json");
@@ -32,12 +33,17 @@ builder.defineStreamHandler(async ({ type, id }) => {
 });
 
 function encodeProxyTarget(url) {
-  return Buffer.from(url, "utf8").toString("base64url");
+  return zlib.deflateRawSync(Buffer.from(String(url || ""), "utf8")).toString("base64url");
 }
 
 function decodeProxyTarget(value) {
   try {
-    return Buffer.from(String(value || ""), "base64url").toString("utf8");
+    const raw = Buffer.from(String(value || ""), "base64url");
+    try {
+      return zlib.inflateRawSync(raw).toString("utf8");
+    } catch {
+      return raw.toString("utf8");
+    }
   } catch {
     return "";
   }
@@ -64,8 +70,7 @@ function rewriteM3u8(body, sourceUrl, baseUrl) {
 
       try {
         const absolute = new URL(trimmed, sourceUrl).toString();
-        const token = storeProxyTarget(absolute);
-        return `${cleanBase}/proxy/hls/${encodeURIComponent(token)}`;
+        return `${cleanBase}/proxy/hls?u=${encodeURIComponent(encodeProxyTarget(absolute))}`;
       } catch {
         return line;
       }
@@ -118,10 +123,9 @@ function rewriteMasterPlaylist(body, sourceUrl, baseUrl) {
 
     try {
       const absolute = new URL(uriLine, sourceUrl).toString();
-      const token = storeProxyTarget(absolute);
       variants.push({
         inf: line,
-        url: `${cleanBase}/proxy/hls/${encodeURIComponent(token)}`,
+        url: `${cleanBase}/proxy/hls?u=${encodeURIComponent(encodeProxyTarget(absolute))}`,
         bandwidth: parseNumberFromTag(line, "BANDWIDTH"),
         frameRate: parseNumberFromTag(line, "FRAME-RATE"),
         height: parseResolutionHeight(line)
