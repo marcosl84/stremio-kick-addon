@@ -4,13 +4,20 @@ const BASE = "https://kick.com";
 const API = `${BASE}/api/v2`;
 const TTL = Number(process.env.CACHE_DURATION || 60) * 1000;
 const MAX = Number(process.env.MAX_RESULTS || 40);
+const VOD_CHANNELS = Number(process.env.VOD_CHANNELS || 8);
+const LIVE_LANG = process.env.KICK_LANG || "pt";
 
 const http = axios.create({
   timeout: 12000,
   headers: {
     "User-Agent": "Mozilla/5.0 (compatible; Stremio-Kick-Addon/1.1)",
     "Accept": "application/json, text/plain, */*",
-    "Referer": "https://kick.com/"
+    "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Referer": "https://kick.com/",
+    "Origin": "https://kick.com",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-site"
   }
 });
 
@@ -72,11 +79,77 @@ async function getChannelStream(slug) {
   });
 }
 
-async function getLiveStreams(search) {
-  return cached(`live:${search || ""}`, async () => {
+async function getChannelVideos(slug) {
+  return cached(`videos:${slug}`, async () => {
+    try {
+      const r = await http.get(`${API}/channels/${encodeURIComponent(slug)}/videos`);
+      const raw = r.data?.data || r.data;
+      return Array.isArray(raw) ? raw : [];
+    } catch (err) {
+      console.error("Channel videos error:", err.response?.status || "", err.message);
+      return [];
+    }
+  });
+}
+
+function normalizeVod(video, channel) {
+  if (!video || !channel) return null;
+
+  return {
+    id: video.id,
+    slug: channel.slug,
+    channel,
+    source: video.source,
+    duration: video.duration || 0,
+    session_title: video.session_title || video.title || channel.name,
+    language: video.language || "",
+    tags: Array.isArray(video.tags) ? video.tags : [],
+    thumbnail: video.thumbnail || {},
+    category: video.category?.name || video.category || channel.category || "",
+    is_live: !!video.is_live
+  };
+}
+
+async function getChannelVideo(slug, videoId) {
+  const channel = await getChannel(slug);
+  if (!channel) return null;
+  const videos = await getChannelVideos(slug);
+  const raw = videos.find(v => String(v.id) === String(videoId));
+  return raw ? normalizeVod(raw, channel) : null;
+}
+
+async function getVods(search) {
+  const channels = await getLiveStreams("", LIVE_LANG);
+  const videos = [];
+
+  for (const channel of channels.slice(0, VOD_CHANNELS)) {
+    const channelVideos = await getChannelVideos(channel.slug);
+    for (const raw of channelVideos) {
+      if (!raw || !raw.source || raw.is_live) continue;
+      const vod = normalizeVod(raw, channel);
+      if (vod) videos.push(vod);
+    }
+  }
+
+  let result = videos;
+  if (search) {
+    const q = search.toLowerCase();
+    result = result.filter(x =>
+      x.session_title?.toLowerCase().includes(q) ||
+      x.channel.name.toLowerCase().includes(q) ||
+      x.language.toLowerCase().includes(q) ||
+      x.tags.some(tag => String(tag).toLowerCase().includes(q))
+    );
+  }
+
+  return result.slice(0, MAX);
+}
+
+async function getLiveStreams(search, lang = LIVE_LANG) {
+  return cached(`live:${lang}:${search || ""}`, async () => {
     // Kick's public website endpoint is intentionally used as a fallback
     // because the official developer API requires OAuth credentials.
-    const url = `${BASE}/stream/livestreams/en`;
+    const url = `${BASE}/stream/livestreams/${lang}`;
     const r = await http.get(url, {
       params: { page: 1 },
       headers: { "Accept": "application/json, text/plain, */*" }
@@ -109,4 +182,4 @@ async function getLiveStreams(search) {
   });
 }
 
-module.exports = { getChannel, getChannelStream, getLiveStreams };
+module.exports = { getChannel, getChannelStream, getChannelVideo, getChannelVideos, getVods, getLiveStreams };
