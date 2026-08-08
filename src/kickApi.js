@@ -119,7 +119,8 @@ async function getChannelVideo(slug, videoId) {
 }
 
 async function getVods(search) {
-  const channels = await getLiveStreams("", LIVE_LANG);
+  // fetch all live channels (no lang filter) to maximize VOD coverage
+  const channels = await getLiveStreams("", "en");
   const videos = [];
 
   for (const channel of channels.slice(0, VOD_CHANNELS)) {
@@ -147,34 +148,50 @@ async function getVods(search) {
 
 async function getLiveStreams(search, lang = LIVE_LANG) {
   return cached(`live:${lang}:${search || ""}`, async () => {
-    // Kick's public website endpoint is intentionally used as a fallback
-    // because the official developer API requires OAuth credentials.
-    const url = `${BASE}/stream/livestreams/${lang}`;
-    const r = await http.get(url, {
-      params: { page: 1 },
-      headers: { "Accept": "application/json, text/plain, */*" }
-    });
+    const url = `${BASE}/stream/livestreams/en`;
+    const pages = lang === "pt" ? 4 : 2;
+    const allItems = [];
 
-    const raw = r.data?.data || r.data?.livestreams || r.data;
-    const list = Array.isArray(raw) ? raw : [];
+    for (let page = 1; page <= pages; page++) {
+      try {
+        const r = await http.get(url, {
+          params: { page, limit: 24, sort: "desc" },
+          headers: { "Accept": "application/json, text/plain, */*" }
+        });
+        const raw = r.data?.data || r.data?.livestreams || r.data;
+        const list = Array.isArray(raw) ? raw : [];
+        if (list.length === 0) break;
+        allItems.push(...list);
+      } catch (err) {
+        console.error("getLiveStreams page error:", page, err.message);
+        break;
+      }
+    }
 
-    let result = list.map(x => {
+    let result = allItems.map(x => {
       const c = normalizeChannel(x.channel || x, true);
       if (!c) return null;
-
-      // Some versions of the endpoint put stream data at the top level.
       c.title = x.session_title || x.stream_title || c.title;
       c.viewers = x.viewer_count || x.viewers || c.viewers;
       c.category = x.category?.name || x.categories?.[0]?.name || c.category;
+      c.language = x.language || "";
       return c;
     }).filter(Boolean);
+
+    // Portuguese/Brazilian streams float to the top
+    if (lang === "pt" && !search) {
+      const pt = result.filter(x => x.language.toLowerCase().includes("portug"));
+      const rest = result.filter(x => !x.language.toLowerCase().includes("portug"));
+      result = [...pt, ...rest];
+    }
 
     if (search) {
       const q = search.toLowerCase();
       result = result.filter(x =>
         x.slug.toLowerCase().includes(q) ||
         x.name.toLowerCase().includes(q) ||
-        x.title.toLowerCase().includes(q)
+        x.title.toLowerCase().includes(q) ||
+        x.language.toLowerCase().includes(q)
       );
     }
 
