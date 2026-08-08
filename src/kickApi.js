@@ -6,6 +6,10 @@ const TTL = Number(process.env.CACHE_DURATION || 60) * 1000;
 const MAX = Number(process.env.MAX_RESULTS || 40);
 const VOD_CHANNELS = Number(process.env.VOD_CHANNELS || 8);
 const LIVE_LANG = process.env.KICK_LANG || "pt";
+const FALLBACK_LIVE_SLUGS = String(process.env.KICK_FALLBACK_LIVE_SLUGS || "baianotv,gaules,casimito,alanzoka,nobru")
+  .split(",")
+  .map(x => x.trim().toLowerCase())
+  .filter(Boolean);
 
 const http = axios.create({
   timeout: 12000,
@@ -22,6 +26,45 @@ const http = axios.create({
 });
 
 const cache = new Map();
+
+function unique(items) {
+  return Array.from(new Set(items));
+}
+
+async function listLiveByFallbackSlugs(search = "") {
+  const q = String(search || "").trim().toLowerCase();
+  const source = q
+    ? FALLBACK_LIVE_SLUGS.filter(slug => slug.includes(q))
+    : FALLBACK_LIVE_SLUGS;
+  const slugs = unique(source).slice(0, MAX);
+
+  if (slugs.length === 0) return [];
+
+  const results = await Promise.all(slugs.map(async slug => {
+    try {
+      const stream = await getChannelStream(slug);
+      if (!stream || !stream.playbackUrl) return null;
+
+      const channel = await getChannel(slug).catch(() => null);
+      return {
+        slug,
+        name: channel?.name || stream.name || slug,
+        avatar: channel?.avatar || "",
+        banner: channel?.banner || "",
+        followers: channel?.followers || 0,
+        isLive: true,
+        title: stream.title || channel?.title || "",
+        viewers: stream.viewers || channel?.viewers || 0,
+        category: channel?.category || "",
+        language: ""
+      };
+    } catch {
+      return null;
+    }
+  }));
+
+  return results.filter(Boolean).slice(0, MAX);
+}
 
 async function cached(key, fn) {
   const old = cache.get(key);
@@ -203,6 +246,13 @@ async function getLiveStreams(search, lang = LIVE_LANG) {
       );
     }
 
+    // Kick often blocks live-list endpoints from server IPs. If list is empty,
+    // probe a configured slug set directly via per-channel endpoints.
+    if (result.length === 0) {
+      const fallback = await listLiveByFallbackSlugs(search);
+      if (fallback.length > 0) return fallback;
+    }
+
     return result.slice(0, MAX);
   });
 }
@@ -259,6 +309,18 @@ async function searchLiveChannels(query) {
     if (ch.slug.toLowerCase().includes(q) || ch.name.toLowerCase().includes(q) || ch.title.toLowerCase().includes(q)) {
       results.push(ch);
       seen.add(ch.slug);
+    }
+  }
+
+  // If global live listing is blocked, search directly in fallback slugs.
+  if (results.length === 0) {
+    const fallback = await listLiveByFallbackSlugs(q);
+    for (const ch of fallback) {
+      if (seen.has(ch.slug)) continue;
+      if (ch.slug.toLowerCase().includes(q) || ch.name.toLowerCase().includes(q) || ch.title.toLowerCase().includes(q)) {
+        results.push(ch);
+        seen.add(ch.slug);
+      }
     }
   }
 
