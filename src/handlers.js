@@ -16,6 +16,16 @@ function parseVodId(id) {
   return { slug, videoId };
 }
 
+function asString(value, fallback = "") {
+  if (typeof value === "string") return value;
+  if (value == null) return fallback;
+  try {
+    return String(value);
+  } catch {
+    return fallback;
+  }
+}
+
 function buildLiveStreamEntry(slug, streamInfo, baseUrl) {
   const cleanBase = String(baseUrl || "").replace(/\/$/, "");
   const useLocalProxy = cleanBase && process.env.USE_HLS_PROXY !== "false";
@@ -24,12 +34,9 @@ function buildLiveStreamEntry(slug, streamInfo, baseUrl) {
     : streamInfo.playbackUrl;
 
   return {
-    name: `Kick • ${streamInfo.name}`,
-    description: streamInfo.title || "Ao vivo",
-    url: playbackUrl,
-    behaviorHints: {
-      bingeGroup: `kick_${slug}`
-    }
+    name: asString(`Kick • ${asString(streamInfo.name, slug)}`),
+    title: asString(streamInfo.title || "Ao vivo"),
+    url: asString(playbackUrl)
   };
 }
 
@@ -41,12 +48,9 @@ function buildVodStreamEntry(vod, baseUrl) {
     : vod.source;
 
   return {
-    name: `Kick VOD • ${vod.channel.name}`,
-    description: vod.session_title || "VOD",
-    url: playbackUrl,
-    behaviorHints: {
-      bingeGroup: `kick_vod_${vod.slug}`
-    }
+    name: asString(`Kick VOD • ${asString(vod.channel?.name, vod.slug)}`),
+    title: asString(vod.session_title || "VOD"),
+    url: asString(playbackUrl)
   };
 }
 
