@@ -60,20 +60,26 @@ async function getChannel(slug) {
 
 async function getChannelStream(slug) {
   return cached(`stream:${slug}`, async () => {
-    const r = await http.get(`${API}/channels/${encodeURIComponent(slug)}/livestream`);
-    const data = r.data?.data || r.data;
-    if (!data) return null;
+    // try /livestream first; fallback to channel.playback_url
+    try {
+      const r = await http.get(`${API}/channels/${encodeURIComponent(slug)}/livestream`);
+      const data = r.data?.data || r.data;
+      if (data?.playback_url) {
+        return { slug, name: slug, title: data.session_title || "", viewers: data.viewers || 0, playbackUrl: data.playback_url, streamId: data.id || `kick_${slug}` };
+      }
+    } catch {}
 
-    const playbackUrl = data.playback_url || data.playbackUrl;
-    if (!playbackUrl) return null;
-
+    // fallback: use channel endpoint which includes playback_url when live
+    const r = await http.get(`${API}/channels/${encodeURIComponent(slug)}`);
+    const ch = r.data?.data || r.data;
+    if (!ch?.playback_url || !ch.livestream) return null;
     return {
       slug,
-      name: slug,
-      title: data.session_title || "",
-      viewers: data.viewers || 0,
-      playbackUrl,
-      streamId: data.id || `kick_${slug}`
+      name: ch.user?.username || slug,
+      title: ch.livestream?.session_title || "",
+      viewers: ch.livestream?.viewer_count || 0,
+      playbackUrl: ch.playback_url,
+      streamId: ch.livestream?.id || `kick_${slug}`
     };
   });
 }
@@ -198,6 +204,37 @@ async function getLiveStreams(search, lang = LIVE_LANG) {
     }
 
     return result.slice(0, MAX);
+  });
+}
+
+async function getFollowedChannels(token) {
+  return cached(`followed:${token.slice(0, 20)}`, async () => {
+    const r = await http.get(`${API}/channels/followed`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const raw = r.data?.data || r.data;
+    const list = Array.isArray(raw) ? raw : [];
+
+    const live = [];
+    for (const ch of list) {
+      const slug = ch.slug || ch.channel?.slug;
+      if (!slug) continue;
+      // only include channels currently live
+      if (!ch.livestream && !ch.channel?.livestream) continue;
+      const ls = ch.livestream || ch.channel?.livestream;
+      live.push({
+        slug,
+        name: ch.user?.username || ch.channel?.user?.username || slug,
+        avatar: ch.user?.profilepic || ch.channel?.user?.profilepic || "",
+        banner: ch.banner_image || "",
+        title: ls?.session_title || "",
+        viewers: ls?.viewer_count || 0,
+        thumbnail: ls?.thumbnail?.src || "",
+        language: ls?.language || "",
+        isLive: true
+      });
+    }
+    return live;
   });
 }
 

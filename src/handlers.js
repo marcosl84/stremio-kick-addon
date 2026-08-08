@@ -150,4 +150,4 @@ async function handleStream(type, id) {
   return { streams: [] };
 }
 
-module.exports = { handleCatalog, handleMeta, handleStream };
+module.exports = { handleCatalog, handleMeta, handleStream, toLiveMeta };

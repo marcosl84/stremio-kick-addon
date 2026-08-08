@@ -21,11 +21,13 @@
       "type": "other",
       "id": "kick_vod",
       "name": "Kick - VOD",
-      "extra": []
+      "extra": [
+        { "name": "search", "isRequired": false }
+      ]
     }
   ],
   "behaviorHints": {
-    "configurable": false,
+    "configurable": true,
     "configurationRequired": false
   }
 }
