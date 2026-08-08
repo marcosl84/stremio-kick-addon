@@ -16,6 +16,41 @@ function parseVodId(id) {
   return { slug, videoId };
 }
 
+function buildKickProxyHeaders() {
+  return {
+    request: {
+      // Kick costuma validar estes headers para liberar HLS de forma consistente.
+      Origin: "https://kick.com",
+      Referer: "https://kick.com/",
+      "User-Agent": "Mozilla/5.0 (compatible; Stremio-Kick-Addon/1.2)"
+    }
+  };
+}
+
+function buildLiveStreamEntry(slug, streamInfo) {
+  return {
+    name: `Kick • ${streamInfo.name}`,
+    description: streamInfo.title || "Ao vivo",
+    url: streamInfo.playbackUrl,
+    behaviorHints: {
+      bingeGroup: `kick_${slug}`,
+      proxyHeaders: buildKickProxyHeaders()
+    }
+  };
+}
+
+function buildVodStreamEntry(vod) {
+  return {
+    name: `Kick VOD • ${vod.channel.name}`,
+    description: vod.session_title || "VOD",
+    url: vod.source,
+    behaviorHints: {
+      bingeGroup: `kick_vod_${vod.slug}`,
+      proxyHeaders: buildKickProxyHeaders()
+    }
+  };
+}
+
 function toLiveMeta(c) {
   return {
     id: `kick_${c.slug}`,
@@ -106,15 +141,7 @@ async function handleStream(type, id) {
       if (!s || !s.playbackUrl) return { streams: [] };
 
       return {
-        streams: [{
-          name: `Kick • ${s.name}`,
-          description: s.title || "Ao vivo",
-          url: s.playbackUrl,
-          behaviorHints: {
-            notWebReady: true,
-            bingeGroup: `kick_${slug}`
-          }
-        }]
+        streams: [buildLiveStreamEntry(slug, s)]
       };
     } catch (err) {
       console.error("Stream error:", err.response?.status || "", err.message);
@@ -131,15 +158,7 @@ async function handleStream(type, id) {
       if (!vod || !vod.source) return { streams: [] };
 
       return {
-        streams: [{
-          name: `Kick VOD • ${vod.channel.name}`,
-          description: vod.session_title || "VOD",
-          url: vod.source,
-          behaviorHints: {
-            notWebReady: true,
-            bingeGroup: `kick_vod_${vod.slug}`
-          }
-        }]
+        streams: [buildVodStreamEntry(vod)]
       };
     } catch (err) {
       console.error("Stream error:", err.response?.status || "", err.message);
