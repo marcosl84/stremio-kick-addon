@@ -103,27 +103,40 @@ async function getChannel(slug) {
 
 async function getChannelStream(slug) {
   return cached(`stream:${slug}`, async () => {
-    // try /livestream first; fallback to channel.playback_url
+    // Prefer channel endpoint first: it has been more stable than /livestream
+    // from server IPs and already includes playback_url when the channel is live.
+    try {
+      const r = await http.get(`${API}/channels/${encodeURIComponent(slug)}`);
+      const ch = r.data?.data || r.data;
+      if (ch?.playback_url && ch?.livestream) {
+        return {
+          slug,
+          name: ch.user?.username || slug,
+          title: ch.livestream?.session_title || "",
+          viewers: ch.livestream?.viewer_count || 0,
+          playbackUrl: ch.playback_url,
+          streamId: ch.livestream?.id || `kick_${slug}`
+        };
+      }
+    } catch {}
+
+    // Fallback to /livestream for channels where channel payload is incomplete.
     try {
       const r = await http.get(`${API}/channels/${encodeURIComponent(slug)}/livestream`);
       const data = r.data?.data || r.data;
       if (data?.playback_url) {
-        return { slug, name: slug, title: data.session_title || "", viewers: data.viewers || 0, playbackUrl: data.playback_url, streamId: data.id || `kick_${slug}` };
+        return {
+          slug,
+          name: slug,
+          title: data.session_title || "",
+          viewers: data.viewers || 0,
+          playbackUrl: data.playback_url,
+          streamId: data.id || `kick_${slug}`
+        };
       }
     } catch {}
 
-    // fallback: use channel endpoint which includes playback_url when live
-    const r = await http.get(`${API}/channels/${encodeURIComponent(slug)}`);
-    const ch = r.data?.data || r.data;
-    if (!ch?.playback_url || !ch.livestream) return null;
-    return {
-      slug,
-      name: ch.user?.username || slug,
-      title: ch.livestream?.session_title || "",
-      viewers: ch.livestream?.viewer_count || 0,
-      playbackUrl: ch.playback_url,
-      streamId: ch.livestream?.id || `kick_${slug}`
-    };
+    return null;
   });
 }
 

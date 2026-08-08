@@ -1,6 +1,6 @@
 {
   "name": "stremio-kick-addon",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "Stremio add-on for Kick live channels",
   "main": "index.js",
   "scripts": {
