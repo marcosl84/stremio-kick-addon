@@ -89,14 +89,33 @@ function buildLiveStreamEntries(slug, streamInfo, baseUrl) {
     : "";
 
   const baseTitle = sanitizeText(streamInfo.title || "Ao vivo", "Ao vivo");
-  const url = proxyUrl || directUrl;
-  if (!url) return [];
+  const streamUrls = [];
 
-  return [{
-    name: "Kick Live",
-    description: baseTitle,
-    url
-  }];
+  if (proxyUrl) {
+    streamUrls.push({
+      name: "Kick Live Auto",
+      description: `${baseTitle} • Auto`,
+      url: proxyUrl
+    });
+
+    ["720p", "1080p", "480p", "360p"].forEach((quality) => {
+      streamUrls.push({
+        name: `Kick Live ${quality}`,
+        description: `${baseTitle} • ${quality}`,
+        url: `${proxyUrl}?quality=${encodeURIComponent(quality)}`
+      });
+    });
+  }
+
+  if (directUrl) {
+    streamUrls.push({
+      name: "Kick Live Direct",
+      description: `${baseTitle} • Direct`,
+      url: directUrl
+    });
+  }
+
+  return streamUrls.length ? streamUrls : [];
 }
 
 function buildVodStreamEntries(vod, baseUrl) {

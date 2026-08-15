@@ -198,6 +198,46 @@ function resolveCompatibleVariantUrl(body, sourceUrl) {
   return chooseCompatibleVariant(variants)?.sourceUrl || "";
 }
 
+function resolvePreferredVariantUrl(body, sourceUrl, preferredQuality) {
+  const lines = String(body || "").split("\n");
+  const variants = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = String(lines[i] || "").trim();
+    if (!line.startsWith("#EXT-X-STREAM-INF")) continue;
+
+    let j = i + 1;
+    while (j < lines.length && !String(lines[j] || "").trim()) j++;
+    const uriLine = String(lines[j] || "").trim();
+    if (!uriLine || uriLine.startsWith("#")) continue;
+
+    try {
+      const height = parseResolutionHeight(line);
+      variants.push({
+        sourceUrl: new URL(uriLine, sourceUrl).toString(),
+        bandwidth: parseNumberFromTag(line, "BANDWIDTH"),
+        frameRate: parseNumberFromTag(line, "FRAME-RATE"),
+        height,
+        label: height > 0 ? `${height}p` : ""
+      });
+      i = j;
+    } catch {
+      // ignore invalid variant line
+    }
+  }
+
+  if (!variants.length) return "";
+  if (!preferredQuality) return chooseCompatibleVariant(variants)?.sourceUrl || "";
+
+  const normalized = String(preferredQuality || "").trim().toLowerCase().replace(/[^0-9p]/g, "");
+  const match = variants.find((variant) => {
+    const label = String(variant.label || "").toLowerCase();
+    return label === normalized || `${variant.height || ""}p` === normalized;
+  });
+
+  return match?.sourceUrl || chooseCompatibleVariant(variants)?.sourceUrl || "";
+}
+
 const proxyTargetCache = new Map();
 const PROXY_TARGET_TTL = 8 * 60 * 1000;
 const LIVE_PROXY_STATE_TTL = 2 * 60 * 1000;
@@ -397,8 +437,9 @@ app.get("/proxy/live/:slug.m3u8", async (req, res) => {
 
     const base = `${req.protocol}://${req.get("host")}`;
     const masterText = Buffer.from(upstream.data).toString("utf8");
+    const preferredQuality = String(req.query.quality || "").trim().toLowerCase();
     const variantUrl = masterText.includes("#EXT-X-STREAM-INF")
-      ? resolveCompatibleVariantUrl(masterText, stream.playbackUrl)
+      ? resolvePreferredVariantUrl(masterText, stream.playbackUrl, preferredQuality)
       : stream.playbackUrl;
 
     const mediaTarget = variantUrl || stream.playbackUrl;
