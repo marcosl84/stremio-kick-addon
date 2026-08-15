@@ -28,6 +28,26 @@ const http = axios.create({
   }
 });
 
+function normalizeKickToken(token) {
+  const raw = String(token || "").trim();
+  if (!raw) return "";
+
+  const withoutBearer = raw.replace(/^Bearer\s+/i, "");
+  const withoutQuotes = withoutBearer.replace(/^['"]|['"]$/g, "");
+  return withoutQuotes.trim();
+}
+
+function buildKickAuthHeaders(token) {
+  const clean = normalizeKickToken(token);
+  if (!clean) return {};
+
+  return {
+    Authorization: `Bearer ${clean}`,
+    "X-Kick-Session": clean,
+    "X-Session-Token": clean
+  };
+}
+
 const cache = new Map();
 
 function unique(items) {
@@ -93,17 +113,46 @@ function normalizeChannel(channel, live) {
   const slug = channel.slug || channel.username || channel.user?.username;
   if (!slug) return null;
 
+  const name = channel.name || channel.username || channel.user?.username || slug;
   return {
     slug,
-    name: channel.name || channel.username || channel.user?.username || slug,
+    name,
     avatar: channel.avatar || channel.user?.profilepic || channel.user?.profile_pic || channel.profilepic || "",
-    banner: channel.banner_image || channel.banner || "",
+    banner: channel.banner_image || channel.banner || channel.user?.banner || "",
     followers: channel.followers_count || channel.followers || 0,
     isLive: !!(live || livestream),
     title: livestream?.session_title || livestream?.stream_title || channel.stream_title || "",
     viewers: livestream?.viewer_count || livestream?.viewers || 0,
-    category: livestream?.categories?.[0]?.name || livestream?.category?.name || ""
+    category: livestream?.categories?.[0]?.name || livestream?.category?.name || "",
+    language: livestream?.language || channel.language || "",
+    thumbnail: livestream?.thumbnail?.src || channel.thumbnail?.src || ""
   };
+}
+
+function mergePriorityChannels(baseList = [], priorityList = []) {
+  const seen = new Set();
+  const merged = [];
+
+  for (const item of [...priorityList, ...baseList]) {
+    const slug = String(item?.slug || "").trim().toLowerCase();
+    if (!slug || seen.has(slug)) continue;
+    seen.add(slug);
+    merged.push(item);
+  }
+
+  return merged;
+}
+
+function resolveLivePayload(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  return payload.live_stream || payload.livestream || payload;
+}
+
+function resolvePlaybackUrl(payload) {
+  if (!payload || typeof payload !== "object") return "";
+  const live = resolveLivePayload(payload);
+  const playbackUrl = live?.playback_url || payload.playback_url || live?.source_url || payload.source_url || "";
+  return String(playbackUrl || "").trim();
 }
 
 async function getChannel(slug) {
@@ -248,19 +297,12 @@ async function getLiveStreams(search, lang = LIVE_LANG) {
       c.title = x.session_title || x.stream_title || c.title;
       c.viewers = x.viewer_count || x.viewers || c.viewers;
       c.category = x.category?.name || x.categories?.[0]?.name || c.category;
-      c.language = x.language || "";
-      // thumbnail from the live stream entry; avatar from channel user
-      c.thumbnail = x.thumbnail?.src || "";
+      c.language = x.language || c.language || "";
+      c.thumbnail = x.thumbnail?.src || c.thumbnail || "";
       if (!c.avatar && x.channel?.user?.profilepic) c.avatar = x.channel.user.profilepic;
+      if (!c.banner && x.channel?.banner) c.banner = x.channel.banner;
       return c;
     }).filter(Boolean);
-
-    // Portuguese/Brazilian streams float to the top
-    if (lang === "pt" && !search) {
-      const pt = result.filter(x => x.language.toLowerCase().includes("portug"));
-      const rest = result.filter(x => !x.language.toLowerCase().includes("portug"));
-      result = [...pt, ...rest];
-    }
 
     if (search) {
       const q = search.toLowerCase();
@@ -272,8 +314,11 @@ async function getLiveStreams(search, lang = LIVE_LANG) {
       );
     }
 
-    // Kick often blocks live-list endpoints from server IPs. If list is empty,
-    // probe a configured slug set directly via per-channel endpoints.
+    const followed = await getFollowedChannels(process.env.KICK_TOKEN || "");
+    if (followed.length > 0) {
+      result = mergePriorityChannels(result, followed);
+    }
+
     if (result.length === 0) {
       const fallback = await listLiveByFallbackSlugs(search);
       if (fallback.length > 0) return fallback;
@@ -284,33 +329,46 @@ async function getLiveStreams(search, lang = LIVE_LANG) {
 }
 
 async function getFollowedChannels(token) {
-  return cached(`followed:${token.slice(0, 20)}`, async () => {
-    const r = await http.get(`${API}/channels/followed`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    const raw = r.data?.data || r.data;
-    const list = Array.isArray(raw) ? raw : [];
+  const cleanToken = normalizeKickToken(token);
+  if (!cleanToken) return [];
 
-    const live = [];
-    for (const ch of list) {
-      const slug = ch.slug || ch.channel?.slug;
-      if (!slug) continue;
-      // only include channels currently live
-      if (!ch.livestream && !ch.channel?.livestream) continue;
-      const ls = ch.livestream || ch.channel?.livestream;
-      live.push({
-        slug,
-        name: ch.user?.username || ch.channel?.user?.username || slug,
-        avatar: ch.user?.profilepic || ch.channel?.user?.profilepic || "",
-        banner: ch.banner_image || "",
-        title: ls?.session_title || "",
-        viewers: ls?.viewer_count || 0,
-        thumbnail: ls?.thumbnail?.src || "",
-        language: ls?.language || "",
-        isLive: true
-      });
+  return cached(`followed:${cleanToken.slice(0, 20)}`, async () => {
+    const headers = buildKickAuthHeaders(cleanToken);
+
+    try {
+      const r = await http.get(`${API}/channels/followed`, { headers });
+      const raw = r.data?.data || r.data;
+      const list = Array.isArray(raw) ? raw : [];
+
+      const live = [];
+      for (const ch of list) {
+        const channel = ch.channel || ch;
+        const slug = channel.slug || channel.username || ch.slug || ch.username;
+        if (!slug) continue;
+        const ls = channel.livestream || ch.livestream || null;
+        if (!ls && !channel.is_live) continue;
+
+        live.push({
+          slug,
+          name: channel.user?.username || channel.username || ch.user?.username || slug,
+          avatar: channel.user?.profilepic || channel.avatar || ch.user?.profilepic || "",
+          banner: channel.banner_image || channel.banner || ch.banner_image || "",
+          title: ls?.session_title || channel.title || "",
+          viewers: ls?.viewer_count || channel.viewers_count || 0,
+          thumbnail: ls?.thumbnail?.src || channel.thumbnail || "",
+          language: ls?.language || channel.language || "",
+          isLive: true
+        });
+      }
+      return live;
+    } catch (error) {
+      const status = error.response?.status;
+      if (status === 401 || status === 403 || status === 404) {
+        console.warn("Kick followed channels auth failed; returning empty list.", { status, message: error.message });
+        return [];
+      }
+      throw error;
     }
-    return live;
   });
 }
 
@@ -319,7 +377,6 @@ async function searchLiveChannels(query) {
   const results = [];
   const seen = new Set();
 
-  // direct slug lookup — most precise match
   try {
     const stream = await getChannelStream(q);
     if (stream) {
@@ -328,7 +385,6 @@ async function searchLiveChannels(query) {
     }
   } catch {}
 
-  // filter through cached live list
   const live = await getLiveStreams("", "en");
   for (const ch of live) {
     if (seen.has(ch.slug)) continue;
@@ -338,7 +394,6 @@ async function searchLiveChannels(query) {
     }
   }
 
-  // If global live listing is blocked, search directly in fallback slugs.
   if (results.length === 0) {
     const fallback = await listLiveByFallbackSlugs(q);
     for (const ch of fallback) {
@@ -389,4 +444,20 @@ async function searchVods(query) {
   return results.slice(0, MAX);
 }
 
-module.exports = { getChannel, getChannelStream, getChannelVideo, getChannelVideos, getVods, getLiveStreams, searchLiveChannels, searchVods };
+module.exports = {
+  getChannel,
+  getChannelStream,
+  getChannelVideo,
+  getChannelVideos,
+  getVods,
+  getLiveStreams,
+  searchLiveChannels,
+  searchVods,
+  normalizeKickToken,
+  buildKickAuthHeaders,
+  getFollowedChannels,
+  resolveLivePayload,
+  resolvePlaybackUrl,
+  mergePriorityChannels,
+  normalizeChannel
+};

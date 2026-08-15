@@ -80,6 +80,68 @@ function safeImage(value) {
   return found || FALLBACK_IMAGE;
 }
 
+function parseResolutionHeight(tag) {
+  const match = String(tag || "").match(/RESOLUTION=(\d+)x(\d+)/);
+  return match ? Number(match[2]) : 0;
+}
+
+function getQualityLabel(variant) {
+  const height = Number(variant?.height || 0);
+  return height > 0 ? `${height}p` : String(variant?.label || "").trim() || "auto";
+}
+
+function extractPlaylistVariants(body, sourceUrl) {
+  const lines = String(body || "").split("\n");
+  const variants = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = String(lines[i] || "").trim();
+    if (!line.startsWith("#EXT-X-STREAM-INF")) continue;
+
+    let j = i + 1;
+    while (j < lines.length && !String(lines[j] || "").trim()) j++;
+    const uriLine = String(lines[j] || "").trim();
+    if (!uriLine || uriLine.startsWith("#")) continue;
+
+    try {
+      const url = new URL(uriLine, sourceUrl).toString();
+      const height = parseResolutionHeight(line);
+      variants.push({
+        url,
+        sourceUrl: url,
+        bandwidth: Number(String(line.match(/BANDWIDTH=([0-9.]+)/)?.[1] || "0")),
+        frameRate: Number(String(line.match(/FRAME-RATE=([0-9.]+)/)?.[1] || "0")),
+        height,
+        label: height > 0 ? `${height}p` : ""
+      });
+      i = j;
+    } catch {
+      // ignore invalid variants
+    }
+  }
+
+  return variants;
+}
+
+function chooseCompatibleVariant(variants) {
+  if (!Array.isArray(variants) || variants.length === 0) return null;
+
+  const withPenalty = variants.map((variant) => {
+    let penalty = 0;
+    if (variant.height > 720) penalty += 1000;
+    if ((variant.frameRate || 0) > 30) penalty += 500;
+    if ((variant.bandwidth || 0) > 4500000) penalty += 200;
+    return { ...variant, penalty };
+  });
+
+  withPenalty.sort((a, b) => {
+    if (a.penalty !== b.penalty) return a.penalty - b.penalty;
+    return (b.bandwidth || 0) - (a.bandwidth || 0);
+  });
+
+  return withPenalty[0] || null;
+}
+
 function buildLiveStreamEntries(slug, streamInfo, baseUrl) {
   const cleanBase = String(baseUrl || "").replace(/\/$/, "");
   const useLocalProxy = cleanBase && process.env.USE_HLS_PROXY !== "false";
@@ -152,16 +214,16 @@ function buildVodStreamEntries(vod, baseUrl) {
 }
 
 function toLiveMeta(c) {
+  const streamerName = sanitizeText(c.name || c.slug, c.slug);
+  const title = sanitizeText(c.title || streamerName, streamerName);
   return {
     id: `kick_${c.slug}`,
     type: "live",
-    name: sanitizeText(c.name, c.slug),
-    poster: safeImage(c.thumbnail || c.avatar),
-    background: safeImage(c.thumbnail || c.banner || c.avatar),
-    logo: safeImage(c.avatar || c.thumbnail),
-    description: c.title
-      ? `${c.title}${c.viewers ? ` • ${c.viewers} espectadores` : ""}`
-      : `Canal ${c.name} na Kick`
+    name: streamerName,
+    poster: safeImage(c.avatar || c.thumbnail || c.banner),
+    background: safeImage(c.banner || c.thumbnail || c.avatar),
+    logo: safeImage(c.avatar || c.thumbnail || c.banner),
+    description: title + (c.viewers ? ` • ${c.viewers} espectadores` : "")
   };
 }
 
@@ -269,4 +331,13 @@ async function handleStream(type, id, baseUrl = "") {
   return { streams: [] };
 }
 
-module.exports = { handleCatalog, handleMeta, handleStream, toLiveMeta };
+module.exports = {
+  handleCatalog,
+  handleMeta,
+  handleStream,
+  toLiveMeta,
+  buildLiveStreamEntries,
+  extractPlaylistVariants,
+  chooseCompatibleVariant,
+  getQualityLabel
+};
