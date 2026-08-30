@@ -155,6 +155,12 @@ function resolvePlaybackUrl(payload) {
   return String(playbackUrl || "").trim();
 }
 
+function resolveMediaSource(media) {
+  if (!media || typeof media !== "object") return "";
+  const source = media.source || media.playback_url || media.playbackUrl || media.source_url || media.url || "";
+  return String(source || "").trim();
+}
+
 async function getChannel(slug) {
   return cached(`channel:${slug}`, async () => {
     const r = await http.get(`${API}/channels/${encodeURIComponent(slug)}`);
@@ -217,11 +223,12 @@ async function getChannelVideos(slug) {
 function normalizeVod(video, channel) {
   if (!video || !channel) return null;
 
+  const source = resolveMediaSource(video);
   return {
     id: video.id,
     slug: channel.slug,
     channel,
-    source: video.source,
+    source,
     duration: video.duration || 0,
     session_title: video.session_title || video.title || channel.name,
     language: video.language || "",
@@ -248,9 +255,9 @@ async function getVods(search) {
   for (const channel of channels.slice(0, VOD_CHANNELS)) {
     const channelVideos = await getChannelVideos(channel.slug);
     for (const raw of channelVideos) {
-      if (!raw || !raw.source || raw.is_live) continue;
+      if (!raw || raw.is_live) continue;
       const vod = normalizeVod(raw, channel);
-      if (vod) videos.push(vod);
+      if (vod && vod.source) videos.push(vod);
     }
   }
 
@@ -419,9 +426,9 @@ async function searchVods(query) {
     if (channel) {
       const videos = await getChannelVideos(q);
       for (const raw of videos) {
-        if (!raw || !raw.source || raw.is_live) continue;
+        if (!raw || raw.is_live) continue;
         const vod = normalizeVod(raw, channel);
-        if (vod) { results.push(vod); seen.add(`${vod.slug}:${vod.id}`); }
+        if (vod && vod.source) { results.push(vod); seen.add(`${vod.slug}:${vod.id}`); }
       }
     }
   } catch {}
@@ -458,6 +465,8 @@ module.exports = {
   getFollowedChannels,
   resolveLivePayload,
   resolvePlaybackUrl,
+  resolveMediaSource,
   mergePriorityChannels,
-  normalizeChannel
+  normalizeChannel,
+  normalizeVod
 };

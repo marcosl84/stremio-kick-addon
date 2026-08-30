@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { resolveLivePayload, resolvePlaybackUrl, normalizeKickToken, buildKickAuthHeaders, mergePriorityChannels } = require('../src/kickApi');
+const { resolveLivePayload, resolvePlaybackUrl, normalizeKickToken, buildKickAuthHeaders, mergePriorityChannels, normalizeVod } = require('../src/kickApi');
 const { extractPlaylistVariants, chooseCompatibleVariant, getQualityLabel, toLiveMeta } = require('../src/handlers');
 
 test('normalizeKickToken accepts raw JWT and Bearer-prefixed values', () => {
@@ -68,4 +68,29 @@ test('live metadata uses the streamer name as the title and preserves the cover 
   assert.equal(meta.poster, 'https://img.example/gabe-avatar.jpg');
   assert.equal(meta.background, 'https://img.example/gabe-banner.jpg');
   assert.equal(meta.description, 'Fazendo lives de valor • 1234 espectadores');
+});
+
+test('modern Kick VOD payloads keep a usable playback URL and metadata', () => {
+  const channel = {
+    slug: 'gabepeixe',
+    name: 'gabepeixe',
+    avatar: 'https://img.example/gabe-avatar.jpg',
+    banner: 'https://img.example/gabe-banner.jpg',
+    category: 'IRL'
+  };
+
+  const vod = normalizeVod({
+    id: 42,
+    playback_url: 'https://live-video.net/vod/42/master.m3u8',
+    session_title: 'Replay da live',
+    duration: 1234,
+    language: 'pt',
+    is_live: false,
+    thumbnail: { src: 'https://img.example/thumb.jpg' }
+  }, channel);
+
+  assert.equal(vod.source, 'https://live-video.net/vod/42/master.m3u8');
+  assert.equal(vod.session_title, 'Replay da live');
+  assert.equal(vod.category, 'IRL');
+  assert.equal(vod.slug, 'gabepeixe');
 });
